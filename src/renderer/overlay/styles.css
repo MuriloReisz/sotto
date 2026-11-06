@@ -1,0 +1,225 @@
+/* The window itself is fully transparent; everything visible is the .card. */
+
+:root {
+  --bg: rgba(18, 18, 22, 0.86);
+  --bg-raised: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.12);
+  --text: #ecebef;
+  --text-dim: #9a98a3;
+  --ok: #5fd39a;
+  --warn: #ff7a6b;
+  --amber: #f5b951;
+  --live: #ff5c7a;
+  --radius: 14px;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
+.card {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* Visual hint that clicks currently go to the app underneath. */
+.card.is-click-through {
+  border-style: dashed;
+  border-color: rgba(245, 185, 81, 0.55);
+}
+
+/* ---- Header: also the drag handle for moving the window with the mouse ---- */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 14px;
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.logo {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--text);
+  box-shadow: inset 0 0 0 2px var(--bg), inset 0 0 0 6px var(--text);
+}
+
+.pills {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.pill {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.pill::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: 1px;
+  background: currentColor;
+}
+.pill-ok { color: var(--ok); }
+.pill-warn { color: var(--warn); }
+.pill-amber { color: var(--amber); }
+.pill-live { color: var(--live); }
+
+.actions {
+  display: flex;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.icon-btn {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.icon-btn:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+.icon-btn:focus-visible {
+  outline: 2px solid var(--text-dim);
+}
+
+/* ---- Body ---- */
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.lead {
+  margin: 0 0 14px;
+  color: var(--text-dim);
+}
+
+.hotkeys {
+  margin: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.hotkey {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 8px;
+}
+.hotkey:nth-child(odd) {
+  background: var(--bg-raised);
+}
+.hotkey dt { color: var(--text); }
+.hotkey dd { margin: 0; }
+
+kbd {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+}
+
+.errors {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 122, 107, 0.4);
+  background: rgba(255, 122, 107, 0.08);
+}
+.errors h2 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--warn);
+}
+.errors p {
+  margin: 4px 0 0;
+  color: var(--text-dim);
+}
+
+/* ---- Toasts ---- */
+.toasts {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.toast {
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(40, 40, 48, 0.96);
+  border: 1px solid var(--border);
+  animation: toast-in 160ms ease-out;
+}
+.toast-error {
+  border-color: rgba(255, 122, 107, 0.5);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}

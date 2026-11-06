@@ -1,0 +1,15 @@
+node_modules/
+out/
+dist/
+release/
+*.log
+.DS_Store
+
+# Secrets never live in the repo. Keys are stored encrypted (Electron safeStorage)
+# in the app's userData folder, outside this directory.
+.env
+.env.*
+
+# Whisper models are large binaries; download them separately (see README).
+*.bin
+*.tsbuildinfo

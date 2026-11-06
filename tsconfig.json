@@ -1,0 +1,6 @@
+{
+  // Two separate programs: Node-side code (main, preload, tests) and browser-side code (renderer).
+  // `npm run typecheck` checks both.
+  "files": [],
+  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.web.json" }]
+}
