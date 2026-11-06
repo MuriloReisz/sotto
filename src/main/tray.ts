@@ -15,7 +15,7 @@ let tray: Tray | null = null
 
 export function createTray(actions: TrayActions, state: OverlayState): Tray {
   tray = new Tray(drawIcon(process.platform === 'darwin'))
-  tray.setToolTip('Veil')
+  tray.setToolTip('Sotto')
   updateTray(actions, state)
   return tray
 }
@@ -38,7 +38,7 @@ export function updateTray(actions: TrayActions, state: OverlayState): void {
       { type: 'separator' },
       { label: 'Settings… (coming in M5)', enabled: false },
       { type: 'separator' },
-      { label: 'Quit Veil', click: actions.quit }
+      { label: 'Quit Sotto', click: actions.quit }
     ])
   )
 }

@@ -1,7 +1,9 @@
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'node:path'
 import { MOVE_STEP_PX } from '../../shared/defaults'
-import type { Bounds } from '../../shared/types'
+import { moveOverlayBounds, placeOverlay } from '../../shared/geometry'
+import { preventActivationOnClick } from '../native/mac-nonactivating'
+import { devToolsAllowed, lockDownWebContents } from '../security'
 import { getSettings, updateSettings } from '../store/settings'
 import { setState } from '../state'
 
@@ -23,9 +25,17 @@ export function markQuitting(): void {
   quitting = true
 }
 
+const workAreas = (): Electron.Rectangle[] => screen.getAllDisplays().map((d) => d.workArea)
+
 export function createOverlayWindow(): BrowserWindow {
   const isMac = process.platform === 'darwin'
-  const bounds = initialBounds(getSettings().overlayBounds)
+  const bounds = placeOverlay(
+    getSettings().overlayBounds,
+    workAreas(),
+    screen.getPrimaryDisplay().workArea,
+    DEFAULT_SIZE,
+    MARGIN
+  )
 
   win = new BrowserWindow({
     ...bounds,
@@ -46,19 +56,29 @@ export function createOverlayWindow(): BrowserWindow {
     // when shown. Windows 'toolbar' = tool window: hidden from Alt-Tab.
     type: isMac ? 'panel' : 'toolbar',
     alwaysOnTop: true,
+    // Never take keyboard focus by default. Clicking the overlay then doesn't steal focus
+    // from the app behind it (browsers report focus loss to pages, and some interview or
+    // proctoring tools watch for it). The chat box (M3) turns focus on only while typing.
+    focusable: false,
+    // macOS: the first click on a non-focused window acts immediately instead of only focusing.
+    acceptFirstMouse: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      devTools: devToolsAllowed()
     }
   })
+
+  lockDownWebContents(win.webContents)
+  // macOS: clicking the overlay must not make Sotto the active app (see the file for why).
+  preventActivationOnClick(win)
 
   // Hide the window from screen capture / sharing.
   //   macOS:   NSWindow.sharingType = .none
   //   Windows: SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE), Win10 2004+
-  // Limitation: on macOS 15+ apps that capture through ScreenCaptureKit (Zoom, Teams,
-  // QuickTime, Cmd+Shift+5) are reported to ignore this. See README > Known limitations.
+  // See README > Screen-share invisibility for what has and hasn't been tested.
   win.setContentProtection(true)
 
   // 'screen-saver' is the highest always-on-top level: above full-screen apps and the Dock.
@@ -66,13 +86,17 @@ export function createOverlayWindow(): BrowserWindow {
   // Follow the user across Spaces / virtual desktops, including full-screen Spaces.
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
-  // Closing (e.g. Cmd+W) only hides the overlay; quitting happens from the tray menu.
+  // Closing only hides the overlay; quitting happens from the tray menu.
   win.on('close', (event) => {
     if (!quitting) {
       event.preventDefault()
       hideOverlay()
     }
   })
+
+  // Track visibility from the window itself, whoever caused the change.
+  win.on('show', () => setState({ visible: true }))
+  win.on('hide', () => setState({ visible: false }))
 
   // Remember position/size across launches.
   win.on('moved', saveBounds)
@@ -93,15 +117,11 @@ export function createOverlayWindow(): BrowserWindow {
 }
 
 export function showOverlay(): void {
-  if (!win) return
-  win.showInactive()
-  setState({ visible: true })
+  win?.showInactive()
 }
 
 export function hideOverlay(): void {
-  if (!win) return
-  win.hide()
-  setState({ visible: false })
+  win?.hide()
 }
 
 export function toggleOverlay(): void {
@@ -112,51 +132,21 @@ export function toggleOverlay(): void {
 /**
  * Click-through: mouse events pass to whatever is underneath the overlay.
  * `forward: true` still delivers mouse-move events to the page, so hover styles work.
- * The window also stops taking keyboard focus while click-through is on.
  */
 export function setClickThrough(enabled: boolean): void {
   if (!win) return
   win.setIgnoreMouseEvents(enabled, { forward: true })
-  win.setFocusable(!enabled)
   setState({ clickThrough: enabled })
 }
 
-/** Nudge the overlay, keeping it on the display it ends up on. */
-export function moveOverlay(dx: number, dy: number): void {
+/** Nudge the overlay; at a display edge it hops onto the neighbouring display, if any. */
+export function moveOverlay(dx: -1 | 0 | 1, dy: -1 | 0 | 1): void {
   if (!win) return
-  const b = win.getBounds()
-  const wanted = { ...b, x: b.x + dx * MOVE_STEP_PX, y: b.y + dy * MOVE_STEP_PX }
-  const area = screen.getDisplayMatching(wanted).workArea
-  const x = clamp(wanted.x, area.x, area.x + area.width - b.width)
-  const y = clamp(wanted.y, area.y, area.y + area.height - b.height)
-  win.setBounds({ ...b, x, y })
+  win.setBounds(moveOverlayBounds(win.getBounds(), dx, dy, workAreas(), MOVE_STEP_PX))
   saveBounds()
 }
 
 function saveBounds(): void {
   if (!win) return
   updateSettings({ overlayBounds: win.getBounds() })
-}
-
-/** Restore saved bounds if they're still on a connected display; otherwise top-right of the primary display. */
-function initialBounds(saved: Bounds | null): Bounds {
-  if (saved) {
-    const area = screen.getDisplayMatching(saved).workArea
-    const visible =
-      saved.x < area.x + area.width &&
-      saved.x + saved.width > area.x &&
-      saved.y < area.y + area.height &&
-      saved.y + saved.height > area.y
-    if (visible) return saved
-  }
-  const area = screen.getPrimaryDisplay().workArea
-  return {
-    ...DEFAULT_SIZE,
-    x: area.x + area.width - DEFAULT_SIZE.width - MARGIN,
-    y: area.y + MARGIN
-  }
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), Math.max(min, max))
 }

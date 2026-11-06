@@ -13,8 +13,8 @@ export const IPC = {
   toast: 'overlay:toast'
 } as const
 
-/** The API the preload script exposes to the page as `window.veil`. */
-export interface VeilApi {
+/** The API the preload script exposes to the page as `window.sotto`. */
+export interface SottoApi {
   getState(): Promise<OverlayState>
   toggleClickThrough(): void
   hideOverlay(): void

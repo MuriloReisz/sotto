@@ -5,8 +5,8 @@ import { parseSettings } from '../../shared/settings-schema'
 import type { Settings } from '../../shared/types'
 
 // Settings live in a plain JSON file in the OS app-data folder:
-//   macOS:   ~/Library/Application Support/veil/settings.json
-//   Windows: %APPDATA%\veil\settings.json
+//   macOS:   ~/Library/Application Support/sotto/settings.json
+//   Windows: %APPDATA%\sotto\settings.json
 // API keys are NOT stored here; they go through safeStorage (see secrets.ts, M2).
 
 type Listener = (settings: Settings) => void
@@ -55,7 +55,12 @@ export function flushSettings(): void {
   saveTimer = null
   if (!current) return
   const file = settingsPath()
-  mkdirSync(dirname(file), { recursive: true })
-  writeFileSync(`${file}.tmp`, JSON.stringify(current, null, 2))
-  renameSync(`${file}.tmp`, file)
+  try {
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(`${file}.tmp`, JSON.stringify(current, null, 2))
+    renameSync(`${file}.tmp`, file)
+  } catch (error) {
+    // A failed save (disk full, permissions) must never crash the app or pop up a dialog.
+    console.error('[settings] could not save settings.json:', error)
+  }
 }

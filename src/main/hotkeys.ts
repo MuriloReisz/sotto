@@ -2,7 +2,7 @@ import { globalShortcut } from 'electron'
 import { findDuplicateHotkeys } from '../shared/hotkey-format'
 import type { HotkeyAction, HotkeyError, Hotkeys } from '../shared/types'
 
-// Global hotkeys work even when Veil isn't focused. Electron registers them through the
+// Global hotkeys work even when Sotto isn't focused. Electron registers them through the
 // OS hotkey API (Carbon on macOS, RegisterHotKey on Windows), which needs no
 // Accessibility permission. A combo already owned by another app fails to register;
 // we report that instead of failing silently.

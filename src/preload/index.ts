@@ -1,9 +1,9 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { IPC, type VeilApi } from '../shared/ipc'
+import { IPC, type SottoApi } from '../shared/ipc'
 import type { OverlayState, Toast } from '../shared/types'
 
 // The preload script is the only bridge between the page and the main process.
-// The page gets this small typed API as `window.veil`, never raw ipcRenderer or Node.
+// The page gets this small typed API as `window.sotto`, never raw ipcRenderer or Node.
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
   const handler = (_event: IpcRendererEvent, payload: T): void => listener(payload)
@@ -11,7 +11,7 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
   return () => ipcRenderer.removeListener(channel, handler)
 }
 
-const api: VeilApi = {
+const api: SottoApi = {
   getState: () => ipcRenderer.invoke(IPC.getState),
   toggleClickThrough: () => ipcRenderer.send(IPC.toggleClickThrough),
   hideOverlay: () => ipcRenderer.send(IPC.hideOverlay),
@@ -19,4 +19,4 @@ const api: VeilApi = {
   onToast: (listener) => subscribe<Toast>(IPC.toast, listener)
 }
 
-contextBridge.exposeInMainWorld('veil', api)
+contextBridge.exposeInMainWorld('sotto', api)

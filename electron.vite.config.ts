@@ -32,7 +32,7 @@ export default defineConfig({
 function contentSecurityPolicy(): Plugin {
   let isDev = false
   return {
-    name: 'veil:csp',
+    name: 'sotto:csp',
     configResolved(config) {
       isDev = config.command === 'serve'
     },

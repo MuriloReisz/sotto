@@ -2,6 +2,8 @@ import { app } from 'electron'
 import type { HotkeyHandlers } from './hotkeys'
 import { registerHotkeys, unregisterHotkeys } from './hotkeys'
 import { registerIpcHandlers } from './ipc'
+import { installAppMenu } from './menu'
+import { restrictPermissions } from './security'
 import { getState, initState, onStateChanged, setState, setStateTarget, toast } from './state'
 import { flushSettings, getSettings, onSettingsChanged } from './store/settings'
 import { createTray, updateTray, type TrayActions } from './tray'
@@ -16,7 +18,12 @@ import {
 
 // Entry point of the Electron main process: wires the window, hotkeys, tray and IPC together.
 
-// Only one Veil at a time; a second launch just shows the existing overlay.
+// An uncaught error in the main process normally makes Electron show a native error
+// dialog, which is NOT hidden from screen sharing. Log instead and keep running.
+process.on('uncaughtException', (error) => console.error('[sotto] uncaught exception:', error))
+process.on('unhandledRejection', (reason) => console.error('[sotto] unhandled rejection:', reason))
+
+// Only one Sotto at a time; a second launch just shows the existing overlay.
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
@@ -58,6 +65,8 @@ function start(): void {
     hotkeyErrors: []
   })
 
+  installAppMenu()
+  restrictPermissions()
   registerIpcHandlers()
   const overlay = createOverlayWindow()
   setStateTarget(overlay.webContents)

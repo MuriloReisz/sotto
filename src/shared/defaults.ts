@@ -9,7 +9,7 @@ export const DEFAULT_HOTKEYS: Hotkeys = {
   toggleClickThrough: 'CommandOrControl+Shift+C',
   suggestReply: 'CommandOrControl+Shift+Enter',
   // Ctrl+Option+Arrows rather than Cmd+Arrows: a global Cmd+Left/Right would break
-  // "jump to line start/end" in every other app while Veil is running.
+  // "jump to line start/end" in every other app while Sotto is running.
   moveUp: 'Control+Alt+Up',
   moveDown: 'Control+Alt+Down',
   moveLeft: 'Control+Alt+Left',

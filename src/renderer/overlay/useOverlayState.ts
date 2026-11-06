@@ -5,8 +5,8 @@ import type { OverlayState, Toast } from '../../shared/types'
 export function useOverlayState(): OverlayState | null {
   const [state, setState] = useState<OverlayState | null>(null)
   useEffect(() => {
-    void window.veil.getState().then(setState)
-    return window.veil.onStateChanged(setState)
+    void window.sotto.getState().then(setState)
+    return window.sotto.onStateChanged(setState)
   }, [])
   return state
 }
@@ -18,7 +18,7 @@ export function useToasts(): Toast[] {
   const [toasts, setToasts] = useState<Toast[]>([])
   useEffect(
     () =>
-      window.veil.onToast((toast) => {
+      window.sotto.onToast((toast) => {
         setToasts((list) => [...list.slice(-2), toast]) // keep at most 3 on screen
         setTimeout(() => setToasts((list) => list.filter((t) => t.id !== toast.id)), TOAST_MS)
       }),

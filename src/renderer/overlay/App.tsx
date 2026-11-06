@@ -56,7 +56,7 @@ function Header({ state }: { state: OverlayState }): React.JSX.Element {
     <header className="header">
       <span className="brand">
         <span className="logo" aria-hidden />
-        Veil
+        Sotto
       </span>
       <span className="pills">
         <span
@@ -76,7 +76,7 @@ function Header({ state }: { state: OverlayState }): React.JSX.Element {
         <button
           type="button"
           className="icon-btn"
-          onClick={() => window.veil.toggleClickThrough()}
+          onClick={() => window.sotto.toggleClickThrough()}
           title={`Click-through (${key('toggleClickThrough')})`}
           aria-label="Toggle click-through"
         >
@@ -85,7 +85,7 @@ function Header({ state }: { state: OverlayState }): React.JSX.Element {
         <button
           type="button"
           className="icon-btn"
-          onClick={() => window.veil.hideOverlay()}
+          onClick={() => window.sotto.hideOverlay()}
           title={`Hide (${key('toggleOverlay')})`}
           aria-label="Hide overlay"
         >
