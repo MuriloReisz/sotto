@@ -12,6 +12,11 @@ export default tseslint.config(
     languageOptions: { globals: globals.node }
   },
   {
+    // Runs on the browser's audio thread, which has its own globals.
+    files: ['src/renderer/**/*-worklet.js'],
+    languageOptions: { globals: globals.audioWorklet }
+  },
+  {
     files: ['src/renderer/**/*.{ts,tsx}'],
     languageOptions: { globals: globals.browser },
     plugins: { 'react-hooks': reactHooks },

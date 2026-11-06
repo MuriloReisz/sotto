@@ -3,11 +3,14 @@ import { formatAccelerator } from '../shared/hotkey-format'
 import type { OverlayState } from '../shared/types'
 
 // With the Dock icon hidden, the menu-bar (macOS) / system-tray (Windows) icon is the
-// only always-reachable way to show the overlay or quit the app.
+// only always-reachable way to show the overlay, open settings or quit.
 
 export interface TrayActions {
   toggleOverlay: () => void
   toggleClickThrough: () => void
+  recenter: () => void
+  openSettings: () => void
+  openHelp: () => void
   quit: () => void
 }
 
@@ -26,17 +29,19 @@ export function updateTray(actions: TrayActions, state: OverlayState): void {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
-        label: `${state.visible ? 'Hide' : 'Show'} overlay${key(state.hotkeys.toggleOverlay)}`,
+        label: `${state.visible ? 'Hide' : 'Show'} Sotto${key(state.hotkeys.toggleOverlay)}`,
         click: actions.toggleOverlay
       },
       {
-        label: `Click-through${key(state.hotkeys.toggleClickThrough)}`,
+        label: `Let clicks pass through${key(state.hotkeys.toggleClickThrough)}`,
         type: 'checkbox',
         checked: state.clickThrough,
         click: actions.toggleClickThrough
       },
+      { label: 'Move back to the top centre', click: actions.recenter },
       { type: 'separator' },
-      { label: 'Settings… (coming in M5)', enabled: false },
+      { label: 'Settings…', click: actions.openSettings },
+      { label: 'Shortcuts and help', click: actions.openHelp },
       { type: 'separator' },
       { label: 'Quit Sotto', click: actions.quit }
     ])

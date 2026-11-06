@@ -16,15 +16,27 @@ describe('parseSettings', () => {
     expect(parsed.transcriptMinutes).toBe(10)
   })
 
+  it('rejects an unknown model id', () => {
+    expect(parseSettings({ model: 'gpt-9' }).model).toBe('claude-sonnet-5-5')
+  })
+
   it('fills in a missing hotkey without touching the others', () => {
     const parsed = parseSettings({ hotkeys: { toggleOverlay: 'Alt+Space' } })
     expect(parsed.hotkeys.toggleOverlay).toBe('Alt+Space')
-    expect(parsed.hotkeys.screenshot).toBe(DEFAULT_SETTINGS.hotkeys.screenshot)
+    expect(parsed.hotkeys.focusChat).toBe(DEFAULT_SETTINGS.hotkeys.focusChat)
   })
 
-  it('drops bounds that are not a sensible rectangle', () => {
-    expect(parseSettings({ overlayBounds: { x: 0, y: 0, width: 10, height: 10 } }).overlayBounds).toBeNull()
-    const ok = { x: 100, y: 50, width: 440, height: 560 }
-    expect(parseSettings({ overlayBounds: ok }).overlayBounds).toEqual(ok)
+  it('migrates M1 settings files (old fields are ignored)', () => {
+    const parsed = parseSettings({ overlayBounds: { x: 1, y: 2, width: 440, height: 560 }, systemPrompt: 'x' })
+    expect(parsed.overlayPosition).toBeNull()
+    expect(parsed.customInstructions).toBe('')
+  })
+})
+
+describe('long text fields', () => {
+  it('shortens over-long text instead of wiping it', () => {
+    const long = 'x'.repeat(25_000)
+    const parsed = parseSettings({ aboutMe: long })
+    expect(parsed.aboutMe.length).toBe(20_000)
   })
 })

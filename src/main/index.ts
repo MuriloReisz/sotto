@@ -1,16 +1,23 @@
 import { app } from 'electron'
+import { askAboutScreen, focusChat, runQuickAction } from './actions'
 import type { HotkeyHandlers } from './hotkeys'
 import { registerHotkeys, unregisterHotkeys } from './hotkeys'
 import { registerIpcHandlers } from './ipc'
+import { fakeModel } from './llm/client'
 import { installAppMenu } from './menu'
 import { restrictPermissions } from './security'
-import { getState, initState, onStateChanged, setState, setStateTarget, toast } from './state'
+import { publishSettings } from './settings-view'
+import { getState, initState, onStateChanged, setState, setUiTarget, showView } from './state'
+import { hasApiKey } from './store/secrets'
 import { flushSettings, getSettings, onSettingsChanged } from './store/settings'
+import { registerSystemAudioHandler, toggleListening } from './transcription/listening'
+import { stopWhisperServer } from './transcription/whisper-server'
 import { createTray, updateTray, type TrayActions } from './tray'
 import {
   createOverlayWindow,
   markQuitting,
   moveOverlay,
+  recenterOverlay,
   setClickThrough,
   showOverlay,
   toggleOverlay
@@ -31,27 +38,35 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(start)
 }
 
-/** Hotkey -> action map. Actions for later milestones show a placeholder message for now. */
 const hotkeyHandlers: HotkeyHandlers = {
   toggleOverlay,
   toggleClickThrough: () => setClickThrough(!getState().clickThrough),
-  screenshot: () => comingSoon('Screenshot → Claude', 'M2'),
-  toggleListening: () => comingSoon('Live listening', 'M4'),
-  suggestReply: () => comingSoon('"What should I say?"', 'M4'),
+  screenshot: () => void askAboutScreen(),
+  toggleListening: () => void toggleListening(),
+  focusChat,
+  suggestReply: () => runQuickAction('whatToSay'),
   moveUp: () => moveOverlay(0, -1),
   moveDown: () => moveOverlay(0, 1),
   moveLeft: () => moveOverlay(-1, 0),
   moveRight: () => moveOverlay(1, 0)
 }
 
+const openView = (view: 'settings' | 'help') => (): void => {
+  showOverlay()
+  showView(view)
+}
+
 const trayActions: TrayActions = {
   toggleOverlay,
   toggleClickThrough: hotkeyHandlers.toggleClickThrough,
+  recenter: recenterOverlay,
+  openSettings: openView('settings'),
+  openHelp: openView('help'),
   quit: () => app.quit()
 }
 
 function start(): void {
-  // No Dock icon on macOS (the packaged app also sets LSUIElement, M5).
+  // No Dock icon on macOS (the packaged app also sets LSUIElement).
   if (process.platform === 'darwin') app.dock?.hide()
 
   const settings = getSettings()
@@ -59,21 +74,30 @@ function start(): void {
     platform: process.platform as 'darwin' | 'win32' | 'linux',
     visible: false,
     clickThrough: false,
-    listening: false,
+    typing: false,
     contentProtected: false,
     hotkeys: settings.hotkeys,
-    hotkeyErrors: []
+    hotkeyErrors: [],
+    listening: null,
+    busy: false,
+    notesStatus: 'idle',
+    opacity: settings.opacity,
+    hasApiKey: hasApiKey(),
+    onboarded: settings.onboarded,
+    fakeModel: fakeModel()
   })
 
   installAppMenu()
   restrictPermissions()
+  registerSystemAudioHandler()
   registerIpcHandlers()
   const overlay = createOverlayWindow()
-  setStateTarget(overlay.webContents)
+  setUiTarget(overlay.webContents)
+  overlay.webContents.once('did-finish-load', () => publishSettings())
 
   applyHotkeys()
   onSettingsChanged((next) => {
-    // Re-register only when the bindings actually changed (bounds saves happen often).
+    // Re-register only when the bindings actually changed (position saves happen often).
     if (JSON.stringify(next.hotkeys) !== JSON.stringify(getState().hotkeys)) applyHotkeys()
   })
 
@@ -88,14 +112,10 @@ function applyHotkeys(): void {
   for (const e of hotkeyErrors) console.warn(`[hotkeys] ${e.action} (${e.accelerator}): ${e.reason}`)
 }
 
-function comingSoon(feature: string, milestone: string): void {
-  showOverlay()
-  toast(`${feature} arrives in ${milestone}.`)
-}
-
 app.on('before-quit', () => {
   markQuitting()
   flushSettings()
+  stopWhisperServer()
 })
 app.on('will-quit', () => unregisterHotkeys())
 // Hiding the overlay must not quit the app; only the tray "Quit" does.

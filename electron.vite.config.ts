@@ -42,6 +42,10 @@ function contentSecurityPolicy(): Plugin {
         isDev ? "script-src 'self' 'unsafe-inline'" : "script-src 'self'",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: blob:",
+        "font-src 'self' data:",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "form-action 'none'",
         isDev ? "connect-src 'self' ws://localhost:* http://localhost:*" : "connect-src 'self'"
       ].join('; ')
       return [

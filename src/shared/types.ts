@@ -8,6 +8,7 @@ export type HotkeyAction =
   | 'toggleOverlay'
   | 'screenshot'
   | 'toggleListening'
+  | 'focusChat'
   | 'toggleClickThrough'
   | 'suggestReply'
   | 'moveUp'
@@ -25,19 +26,44 @@ export interface Bounds {
   height: number
 }
 
+export type ModelId = 'claude-sonnet-5-5' | 'claude-opus-5-5' | 'claude-haiku-5-5'
+
 /** Persisted user settings (settings.json in the app's userData folder). No secrets here. */
 export interface Settings {
   hotkeys: Hotkeys
-  /** Claude model id used for every request. */
-  model: string
-  /** Extra instructions prepended to every request. */
-  systemPrompt: string
-  /** Background opacity of the overlay card, 0.3–1. */
+  /** Claude model used for every request. */
+  model: ModelId
+  /** Extra instructions added to every request. */
+  customInstructions: string
+  /** "About me": who you are, your role, company, goals. Added to every request. */
+  aboutMe: string
+  /** Background opacity of the overlay, 0.5–1. */
   opacity: number
-  /** How many minutes of transcript "What should I say?" sends as context. */
+  /** How many minutes of transcript the call features send as context. */
   transcriptMinutes: number
-  /** Last overlay position/size, restored on launch. */
-  overlayBounds: Bounds | null
+  /** Where meeting notes are saved. Empty = the default (Documents/Sotto/Meetings). */
+  notesFolder: string
+  /** whisper.cpp model file. Empty = auto-detect. */
+  whisperModelPath: string
+  /** Last overlay position (size is driven by its content). */
+  overlayPosition: { x: number; y: number } | null
+  /** Set after the welcome screen has been completed. */
+  onboarded: boolean
+}
+
+/** Settings as shown in the UI: no secrets, plus a few derived facts. */
+export interface SettingsView extends Settings {
+  hasApiKey: boolean
+  /** Folder actually used for notes (resolved default). */
+  notesFolderResolved: string
+  contextFiles: ContextFile[]
+  transcription: { ready: boolean; detail: string }
+}
+
+export interface ContextFile {
+  name: string
+  sizeKb: number
+  kind: 'text' | 'pdf'
 }
 
 export interface HotkeyError {
@@ -46,20 +72,113 @@ export interface HotkeyError {
   reason: string
 }
 
+export type View = 'chat' | 'transcript' | 'notes' | 'settings' | 'help' | 'welcome'
+
 /** Live state the overlay UI renders. Owned by the main process, pushed to the UI on change. */
 export interface OverlayState {
   platform: Platform
   visible: boolean
   clickThrough: boolean
-  listening: boolean
+  /** The overlay currently has keyboard focus (you're typing). */
+  typing: boolean
   /** What Electron reports for content protection (not proof that every capture tool respects it). */
   contentProtected: boolean
   hotkeys: Hotkeys
   hotkeyErrors: HotkeyError[]
+  /** Listening session: null when not listening. */
+  listening: { since: number; systemAudio: boolean; microphone: boolean } | null
+  /** Claude is writing an answer. */
+  busy: boolean
+  /** Meeting notes are being written. */
+  notesStatus: 'idle' | 'writing'
+  opacity: number
+  hasApiKey: boolean
+  onboarded: boolean
+  /** True when answers come from the built-in fake model (development testing). */
+  fakeModel: boolean
 }
 
 export interface Toast {
   id: number
   text: string
-  kind: 'info' | 'error'
+  kind: 'info' | 'error' | 'success'
+}
+
+// ---- Chat ----
+
+export type QuickAction = 'whatToSay' | 'followUps' | 'factCheck' | 'recap'
+
+export interface ChatItem {
+  id: string
+  role: 'user' | 'assistant'
+  /** Markdown for assistant items, plain text for user items. */
+  text: string
+  /** Small JPEG data URL shown next to screenshot questions. */
+  thumbnail?: string
+  /** Short label for where the question came from, e.g. "Screenshot", "What should I say?". */
+  label?: string
+  status: 'streaming' | 'done' | 'error' | 'stopped'
+  at: number
+}
+
+// ---- Transcript ----
+
+export type Speaker = 'me' | 'them'
+
+export interface TranscriptSegment {
+  id: string
+  speaker: Speaker
+  text: string
+  /** Epoch ms when the speech started. */
+  at: number
+}
+
+/** One chunk of speech captured in the renderer, sent to the main process for transcription. */
+export interface AudioChunk {
+  speaker: Speaker
+  /** 16 kHz mono signed 16-bit PCM. */
+  pcm: ArrayBuffer
+  at: number
+}
+
+export type AudioCommand = { type: 'start' } | { type: 'stop' }
+
+export interface AudioStatus {
+  state: 'started' | 'stopped' | 'error'
+  microphone: boolean
+  systemAudio: boolean
+  message?: string
+}
+
+// ---- Meeting notes ----
+
+export interface ActionItem {
+  owner: string
+  task: string
+  due: string
+}
+
+/** What Claude returns for a meeting (structured output). */
+export interface MeetingNotes {
+  title: string
+  summary: string
+  keyPoints: string[]
+  decisions: string[]
+  actionItems: ActionItem[]
+  followUpEmail: { subject: string; body: string }
+}
+
+export interface MeetingSummary {
+  /** File name, used as the id. */
+  id: string
+  title: string
+  date: string
+  durationMin: number
+  /** First line of the summary, for the list. */
+  preview: string
+}
+
+export interface MeetingDetail extends MeetingSummary {
+  markdown: string
+  followUpEmail: string
 }

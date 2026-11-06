@@ -1,119 +1,128 @@
-import { HOTKEY_LABELS } from '../../shared/defaults'
-import { formatAccelerator } from '../../shared/hotkey-format'
-import type { HotkeyAction, OverlayState } from '../../shared/types'
-import { useOverlayState, useToasts } from './useOverlayState'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { Speaker, View } from '../../shared/types'
+import { AudioCapture } from './audio/capture'
+import { ChatView } from './components/ChatView'
+import { CommandBar } from './components/CommandBar'
+import { HelpView, WelcomeView } from './components/Guide'
+import { NotesView } from './components/NotesView'
+import { PanelHeader } from './components/PanelHeader'
+import { SettingsPanel } from './components/SettingsPanel'
+import { TranscriptView } from './components/TranscriptView'
+import { useOverlayState, useSettings, useToasts } from './hooks'
 
-// M1 overlay: a status header plus a hotkey cheat sheet. The response view, chat
-// panel and transcript drawer slot into <main> in later milestones.
+// Layout: the command bar, then (when a view is open) the panel, then toasts. The whole
+// stack is measured and the window is resized to fit it exactly.
 
-const MAIN_ACTIONS: HotkeyAction[] = [
-  'toggleOverlay',
-  'screenshot',
-  'toggleListening',
-  'suggestReply',
-  'toggleClickThrough'
-]
-
-export function App(): React.JSX.Element {
+export function App(): React.JSX.Element | null {
   const state = useOverlayState()
+  const settings = useSettings()
   const toasts = useToasts()
-  if (!state) return <div className="card" />
+  // undefined = "nothing chosen yet": first run then shows the welcome guide.
+  const [chosenView, setView] = useState<View | null | undefined>(undefined)
+  const view: View | null = chosenView === undefined ? (state && !state.onboarded ? 'welcome' : null) : chosenView
+  const [levels, setLevels] = useState<Record<Speaker, number>>({ me: 0, them: 0 })
+  const stackRef = useRef<HTMLDivElement>(null)
+  const pendingFocus = useRef<HTMLElement | null>(null)
+  const capture = useRef<AudioCapture | null>(null)
 
-  return (
-    <div className={`card ${state.clickThrough ? 'is-click-through' : ''}`}>
-      <Header state={state} />
+  // The main process can ask for a view (hotkeys, errors).
+  useEffect(() => window.sotto.onShowView((v) => setView(v)), [])
 
-      <main className="body">
-        <p className="lead">Ready. Use a shortcut, or keep working: I stay on top.</p>
-        <HotkeyList state={state} />
-        {state.hotkeyErrors.length > 0 && (
-          <section className="errors" role="alert">
-            <h2>Shortcuts that didn't register</h2>
-            {state.hotkeyErrors.map((e) => (
-              <p key={e.action}>
-                <strong>{HOTKEY_LABELS[e.action]}</strong> <kbd>{formatAccelerator(e.accelerator, state.platform)}</kbd>
-                : {e.reason}
-              </p>
-            ))}
-          </section>
-        )}
-      </main>
+  // Report our height so the window fits the content exactly (no invisible click-blocker).
+  useLayoutEffect(() => {
+    const el = stackRef.current
+    if (!el) return
+    const report = (): void => window.sotto.setHeight(Math.ceil(el.getBoundingClientRect().height) + 2)
+    const observer = new ResizeObserver(report)
+    observer.observe(el)
+    report()
+    return () => observer.disconnect()
+  }, [state !== null]) // eslint-disable-line react-hooks/exhaustive-deps
 
-      <div className="toasts" aria-live="polite">
-        {toasts.map((t) => (
-          <div key={t.id} className={`toast toast-${t.kind}`}>
-            {t.text}
-          </div>
-        ))}
-      </div>
-    </div>
+  // Typing: the window is not focusable until you click a text field. Then we ask the
+  // main process for focus and re-focus the field once it's granted.
+  const onMouseDownCapture = (e: React.MouseEvent): void => {
+    const target = e.target as HTMLElement
+    if (target.closest('input, textarea, select') && !state?.typing) {
+      pendingFocus.current = target.closest('input, textarea, select') as HTMLElement
+      window.sotto.setTyping(true)
+    }
+  }
+  useEffect(() => {
+    if (!state?.typing) return
+    const el = pendingFocus.current ?? document.querySelector<HTMLElement>('[data-autofocus]')
+    pendingFocus.current = null
+    // Wait a frame: the window becomes focusable asynchronously.
+    requestAnimationFrame(() => el?.focus())
+  }, [state?.typing])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        ;(document.activeElement as HTMLElement | null)?.blur()
+        window.sotto.setTyping(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Audio capture lives in the page (browser audio APIs); the main process says when.
+  useEffect(
+    () =>
+      window.sotto.onAudioCommand(async (command) => {
+        if (command.type === 'start') {
+          capture.current ??= new AudioCapture({ onChunk: (c) => window.sotto.sendAudioChunk(c), onLevel: setLevels })
+          try {
+            const result = await capture.current.start()
+            window.sotto.audioStatus({ state: 'started', ...result })
+          } catch (error) {
+            // 'cancelled' = you stopped listening while a permission prompt was open; already handled.
+            if ((error as Error).message !== 'cancelled') {
+              window.sotto.audioStatus({ state: 'error', microphone: false, systemAudio: false, message: (error as Error).message })
+            }
+          }
+        } else {
+          await capture.current?.stop()
+          window.sotto.audioStatus({ state: 'stopped', microphone: false, systemAudio: false })
+        }
+      }),
+    []
   )
-}
 
-function Header({ state }: { state: OverlayState }): React.JSX.Element {
-  const key = (action: HotkeyAction): string => formatAccelerator(state.hotkeys[action], state.platform)
-  return (
-    <header className="header">
-      <span className="brand">
-        <span className="logo" aria-hidden />
-        Sotto
-      </span>
-      <span className="pills">
-        <span
-          className={`pill ${state.contentProtected ? 'pill-ok' : 'pill-warn'}`}
-          title="Content protection is on. Some macOS 15+ capture tools may ignore it; see README."
-        >
-          {state.contentProtected ? 'Protected' : 'Not protected'}
-        </span>
-        {state.clickThrough && (
-          <span className="pill pill-amber" title={`Mouse passes through. ${key('toggleClickThrough')} to interact.`}>
-            Click-through
-          </span>
-        )}
-        {state.listening && <span className="pill pill-live">Listening</span>}
-      </span>
-      <span className="actions">
-        <button
-          type="button"
-          className="icon-btn"
-          onClick={() => window.sotto.toggleClickThrough()}
-          title={`Click-through (${key('toggleClickThrough')})`}
-          aria-label="Toggle click-through"
-        >
-          ⇣
-        </button>
-        <button
-          type="button"
-          className="icon-btn"
-          onClick={() => window.sotto.hideOverlay()}
-          title={`Hide (${key('toggleOverlay')})`}
-          aria-label="Hide overlay"
-        >
-          ×
-        </button>
-      </span>
-    </header>
-  )
-}
+  if (!state) return null
 
-function HotkeyList({ state }: { state: OverlayState }): React.JSX.Element {
-  const move = formatAccelerator(state.hotkeys.moveUp, state.platform).replace('↑', '')
+  const toggleView = (v: View): void => setView(view === v ? null : v)
+
   return (
-    <dl className="hotkeys">
-      {MAIN_ACTIONS.map((action) => (
-        <div key={action} className="hotkey">
-          <dt>{HOTKEY_LABELS[action]}</dt>
-          <dd>
-            <kbd>{formatAccelerator(state.hotkeys[action], state.platform)}</kbd>
-          </dd>
+    <div
+      className={`stack ${state.clickThrough ? 'is-click-through' : ''}`}
+      ref={stackRef}
+      onMouseDownCapture={onMouseDownCapture}
+      style={{ '--glass-alpha': state.opacity } as React.CSSProperties}
+    >
+      <CommandBar state={state} view={view} levels={levels} onToggleView={toggleView} onOpenView={setView} />
+
+      {view && (
+        <section className="panel" aria-label="Sotto panel">
+          {view !== 'welcome' && <PanelHeader view={view} onView={setView} onClose={() => setView(null)} />}
+          {view === 'chat' && <ChatView state={state} />}
+          {view === 'transcript' && <TranscriptView state={state} />}
+          {view === 'notes' && <NotesView state={state} />}
+          {view === 'settings' && settings && <SettingsPanel settings={settings} state={state} onHelp={() => setView('help')} />}
+          {view === 'help' && <HelpView state={state} />}
+          {view === 'welcome' && settings && <WelcomeView state={state} settings={settings} onDone={() => setView(null)} />}
+        </section>
+      )}
+
+      {toasts.length > 0 && (
+        <div className="toasts" aria-live="polite">
+          {toasts.map((t) => (
+            <div key={t.id} className={`toast toast-${t.kind}`}>
+              {t.text}
+            </div>
+          ))}
         </div>
-      ))}
-      <div className="hotkey">
-        <dt>Move overlay</dt>
-        <dd>
-          <kbd>{move}+arrows</kbd>
-        </dd>
-      </div>
-    </dl>
+      )}
+    </div>
   )
 }

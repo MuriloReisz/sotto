@@ -37,27 +37,33 @@ export function areaFor(rect: Bounds, areas: Bounds[]): Bounds {
 }
 
 /**
- * Where to open the overlay: the saved bounds if a usable part of them is still on a
- * connected display (pulled fully on-screen, so the header/drag handle is always
- * reachable), otherwise the default spot (top-right of the primary display).
+ * Where to open the overlay: the saved position if a usable part of the window would
+ * still be on a connected display (then pulled fully on-screen, so the command bar is
+ * always reachable), otherwise centred at the top of the given display.
  */
 export function placeOverlay(
-  saved: Bounds | null,
-  areas: Bounds[],
-  primary: Bounds,
+  saved: { x: number; y: number } | null,
   size: { width: number; height: number },
+  areas: Bounds[],
+  home: Bounds,
   margin: number
 ): Bounds {
   if (saved) {
-    const usable = areas.find((a) => {
-      const i = intersection(saved, a)
+    const rect = { ...saved, ...size }
+    const usable = areas.some((a) => {
+      const i = intersection(rect, a)
       return i !== null && i.width >= MIN_VISIBLE.width && i.height >= MIN_VISIBLE.height
     })
-    if (usable) return clampInto(saved, areaFor(saved, areas))
+    if (usable) return clampInto(rect, areaFor(rect, areas))
   }
+  return topCenter(size, home, margin)
+}
+
+/** Centred horizontally, `margin` px below the top of the work area. */
+export function topCenter(size: { width: number; height: number }, area: Bounds, margin: number): Bounds {
   return clampInto(
-    { ...size, x: primary.x + primary.width - size.width - margin, y: primary.y + margin },
-    primary
+    { ...size, x: Math.round(area.x + (area.width - size.width) / 2), y: area.y + margin },
+    area
   )
 }
 
