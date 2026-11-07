@@ -40,6 +40,13 @@ function emit(item: ChatItem, generation: number): void {
   sendToUi(IPC.chatItem, item)
 }
 
+/** Shows a message from Sotto itself in the chat (e.g. a missing permission and how to
+ *  fix it). It stays visible, unlike a toast, and is never sent to Claude. */
+export function notice(text: string): void {
+  emit({ id: randomUUID(), role: 'assistant', text, status: 'error', at: Date.now() }, chatGeneration)
+  showView('chat')
+}
+
 export interface AskOptions {
   /** The question as shown in the chat. */
   text: string

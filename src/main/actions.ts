@@ -3,8 +3,8 @@ import { QUICK_ACTIONS, SCREEN_PROMPT } from '../shared/defaults'
 import { formatAccelerator } from '../shared/hotkey-format'
 import { formatTranscript } from '../shared/transcript'
 import type { QuickAction } from '../shared/types'
-import { ScreenPermissionError, captureScreen } from './capture/screenshot'
-import { ask, newChat } from './chat/conversation'
+import { SCREEN_PERMISSION_HELP, ScreenNotAllowedYetError, ScreenPermissionError, captureScreen } from './capture/screenshot'
+import { ask, newChat, notice } from './chat/conversation'
 import { showView, getState, toast } from './state'
 import { getSettings } from './store/settings'
 import { getTranscript } from './transcription/session'
@@ -37,13 +37,13 @@ export async function askAboutScreen(): Promise<void> {
       transcript: getState().listening ? recentTranscript() : undefined
     })
   } catch (error) {
-    if (error instanceof ScreenPermissionError) {
-      // Never open System Settings on our own: a window popping up mid-call would show on a
-      // screen share. Point to the button in Settings > Permissions instead.
-      toast(`${error.message} Use Settings → Permissions → Screen recording.`, 'error')
-      showView('settings')
+    // Explained in the chat, where it stays, not in a toast that vanishes after a few
+    // seconds. Never open System Settings on our own: a window popping up mid-call would
+    // show on a screen share.
+    if (error instanceof ScreenPermissionError || error instanceof ScreenNotAllowedYetError) {
+      notice(SCREEN_PERMISSION_HELP)
     } else {
-      toast(`Screenshot failed: ${(error as Error).message}`, 'error')
+      notice(`**Screenshot failed:** ${(error as Error).message}`)
     }
   }
 }

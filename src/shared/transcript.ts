@@ -8,7 +8,14 @@ const SPEAKER = { me: 'Me', them: 'Them' } as const
 const NON_SPEECH = /^\s*[[(].*[\])]\s*$|^\s*(\[BLANK_AUDIO\]|\.+|you\.?|thank you\.?)\s*$/i
 
 export function isSpeech(text: string): boolean {
-  return text.trim().length > 0 && !NON_SPEECH.test(text)
+  return text.trim().length > 0 && !NON_SPEECH.test(text) && !isRepeatLoop(text)
+}
+
+/** whisper sometimes turns noise into one word repeated ("Fokri Fokri Fokri Fokri").
+ *  Real speech almost never says the same word 4+ times with nothing else. */
+function isRepeatLoop(text: string): boolean {
+  const words = text.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? []
+  return words.length >= 4 && new Set(words).size === 1
 }
 
 /** Clean whisper output: trim, collapse whitespace, drop bracketed sound tags. */

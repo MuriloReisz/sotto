@@ -9,7 +9,12 @@ export interface ChunkerOptions {
   sampleRate: number
   /** End a chunk after this much silence following speech. */
   silenceMs: number
-  /** Never let a chunk grow longer than this (long monologues get split). */
+  /** After this long, end the chunk at the next short pause (a breath between phrases),
+   *  so long monologues are split between words rather than mid-sentence. */
+  softMaxChunkMs: number
+  /** The short pause that ends a chunk once it is past softMaxChunkMs. */
+  shortPauseMs: number
+  /** Never let a chunk grow longer than this, pause or not. */
   maxChunkMs: number
   /** Drop chunks with less speech than this (coughs, clicks). */
   minSpeechMs: number
@@ -20,7 +25,9 @@ export interface ChunkerOptions {
 export const DEFAULT_CHUNKER: ChunkerOptions = {
   sampleRate: 16_000,
   silenceMs: 700,
-  maxChunkMs: 8_000,
+  softMaxChunkMs: 8_000,
+  shortPauseMs: 200,
+  maxChunkMs: 15_000,
   minSpeechMs: 300,
   prerollMs: 200
 }
@@ -106,7 +113,12 @@ export class SpeechChunker {
       this.silentSlices++
     }
     const lengthMs = this.chunk.length * SLICE_MS
-    if (this.silentSlices * SLICE_MS >= this.o.silenceMs || lengthMs >= this.o.maxChunkMs) {
+    const silentMs = this.silentSlices * SLICE_MS
+    if (
+      silentMs >= this.o.silenceMs ||
+      (lengthMs >= this.o.softMaxChunkMs && silentMs >= this.o.shortPauseMs) ||
+      lengthMs >= this.o.maxChunkMs
+    ) {
       return this.finish()
     }
     return null

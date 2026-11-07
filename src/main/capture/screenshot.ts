@@ -14,6 +14,22 @@ export interface Screenshot {
 }
 
 export class ScreenPermissionError extends Error {}
+/** macOS returned no image without saying "denied": its prompt is showing for the first
+ *  time, or Screen Recording was just switched on and Sotto must be reopened. */
+export class ScreenNotAllowedYetError extends Error {}
+
+export const SCREEN_PERMISSION_HELP =
+  process.platform === 'darwin'
+    ? [
+        '**Sotto can’t see your screen yet.** macOS needs your OK once:',
+        '',
+        '1. Open **System Settings → Privacy & Security → Screen & System Audio Recording**.',
+        '2. Turn on **Sotto** (use **+** to add it from Applications if it isn’t listed).',
+        '3. When macOS asks, click **Quit & Reopen**. Sotto only gets access after a restart.',
+        '',
+        'Then press Ask screen again. Settings → Permissions → **Screen recording** opens that page for you.'
+      ].join('\n')
+    : '**Sotto can’t see your screen.** Check Windows Settings → Privacy & security → Screen capture, then try again.'
 
 export async function captureScreen(): Promise<Screenshot> {
   const permission = process.platform === 'darwin' ? systemPreferences.getMediaAccessStatus('screen') : 'granted'
@@ -32,11 +48,8 @@ export async function captureScreen(): Promise<Screenshot> {
   if (!source || source.thumbnail.isEmpty()) {
     // Permission is fine but nothing came back: the screen is locked or asleep, or (first
     // run) macOS has just shown its permission prompt.
-    throw new Error(
-      permission === 'granted'
-        ? 'Nothing to capture. Is the screen locked or asleep?'
-        : 'macOS needs to allow Screen Recording for Sotto. Allow it, then try again.'
-    )
+    if (permission === 'granted') throw new Error('Nothing to capture. Is the screen locked or asleep?')
+    throw new ScreenNotAllowedYetError('Screen Recording is not allowed yet.')
   }
   let image = source.thumbnail
   const { width, height } = image.getSize()

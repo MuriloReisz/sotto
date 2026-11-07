@@ -1,7 +1,7 @@
 {
   "name": "sotto",
   "productName": "Sotto",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "A personal always-on-top AI overlay: screenshots, live transcription and chat, driven by global hotkeys.",
   "author": "Murilo Reis",

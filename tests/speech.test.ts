@@ -32,11 +32,27 @@ describe('SpeechChunker', () => {
     expect(feed(c, Float32Array.from([...silence(2000), ...tone(100), ...silence(2000)]))).toHaveLength(0)
   })
 
-  it('splits a long monologue at the maximum length', () => {
-    const c = new SpeechChunker({ maxChunkMs: 3000 })
+  it('splits a long monologue with no pauses at the hard maximum', () => {
+    const c = new SpeechChunker({ softMaxChunkMs: 2000, maxChunkMs: 3000 })
     const chunks = feed(c, tone(7000))
     expect(chunks.length).toBe(2)
     expect(c.flush()).not.toBeNull() // the remaining second of speech
+  })
+
+  it('splits a long monologue at a breath, not mid-word, once past the soft maximum', () => {
+    const c = new SpeechChunker() // soft 8 s, short pause 200 ms, hard 15 s
+    // 9 s of speech, a 300 ms breath (shorter than the 700 ms phrase pause), then 3 s more.
+    const chunks = feed(c, Float32Array.from([...tone(9000), ...silence(300), ...tone(3000), ...silence(1000)]))
+    expect(chunks).toHaveLength(2)
+    // The first chunk ends at the breath (about 9.2 s), not at the old fixed 8 s cut.
+    expect(chunks[0].audio.length / RATE).toBeGreaterThan(9)
+    expect(chunks[0].audio.length / RATE).toBeLessThan(9.6)
+  })
+
+  it('keeps a short breath inside a chunk before the soft maximum', () => {
+    const c = new SpeechChunker()
+    const chunks = feed(c, Float32Array.from([...tone(2000), ...silence(300), ...tone(2000), ...silence(1000)]))
+    expect(chunks).toHaveLength(1)
   })
 
   it('reports a level for the meter', () => {
@@ -66,6 +82,11 @@ describe('transcript helpers', () => {
     expect(isSpeech('[BLANK_AUDIO]')).toBe(false)
     expect(isSpeech(' (music) ')).toBe(false)
     expect(isSpeech('So about the pricing')).toBe(true)
+    // whisper's noise loop: one word over and over
+    expect(isSpeech('Fokri Fokri Fokri Fokri Fokri')).toBe(false)
+    expect(isSpeech('No, no, no, no.')).toBe(false)
+    expect(isSpeech('No, no, that is not it.')).toBe(true)
+    expect(isSpeech('Yes yes yes')).toBe(true)
     expect(cleanText('  Hello [laughs] there  (coughs) ')).toBe('Hello there')
   })
 
