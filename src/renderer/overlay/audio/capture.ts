@@ -1,7 +1,7 @@
 import { MIC_UNHEARD, SYSTEM_UNHEARD, WAITING_FOR_PERMISSION, hasSignal, inputDeviceGone } from '../../../shared/audio-health'
 import { SpeechChunker, floatToPcm16, type SpeechChunk } from '../../../shared/speech-chunker'
 import type { AudioChunk, Speaker } from '../../../shared/types'
-import workletUrl from './pcm-worklet.js?url'
+import workletUrl from './pcm-worklet.js?url&no-inline'
 
 // Captures two audio sources and turns them into speech chunks for transcription:
 //   'me'   - your microphone (getUserMedia)
