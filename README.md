@@ -274,6 +274,14 @@ npm run dist:win                                         # NSIS installer (run o
    - It never creates a release. If the release or its `SHA256SUMS` is missing, the upload job fails. Fix that, then re-run the job.
    - `install-test.yml` then runs both install commands on clean runners. The macOS test runs when the release is published, the Windows test after the upload. Each checks the app, whisper.cpp and the model hash. You can also start it from the Actions tab.
 
+**If GitHub Actions can't run** (for example, the account's Actions are blocked), build the Windows installer on the Mac instead and add it by hand:
+```bash
+npm run dist:win:local      # no Wine needed; the .exe keeps Electron's icon and version info
+shasum -a 256 "release/$v/Sotto-win-x64.exe" >> "release/$v/SHA256SUMS"
+gh release upload "v$v" "release/$v/Sotto-win-x64.exe" "release/$v/SHA256SUMS" --clobber
+```
+This build turns off one Windows-only check (embedded asar integrity), because writing that hash into the .exe needs a tool that only runs on Windows or under Wine. All the other protections stay on.
+
 Notes:
 - **Don't rename release files.** The installers download them by name.
 - **Replacing a Mac file later:** run `npm run release:sums` again and upload `SHA256SUMS` with `--clobber`. That drops the `.exe` line, so then re-run `release.yml` from the Actions tab with the tag.
