@@ -29,6 +29,13 @@ export function registerSystemAudioHandler(): void {
       callback({})
       return
     }
+    // Electron only hands out loopback audio together with a video stream. Use Sotto's
+    // own page as that video (the renderer drops it straight away), so listening needs
+    // no Screen Recording permission: only Microphone and System Audio Recording.
+    if (request.frame) {
+      callback({ video: request.frame, audio: 'loopback' })
+      return
+    }
     desktopCapturer
       .getSources({ types: ['screen'] })
       .then((sources) => callback(sources[0] ? { video: sources[0], audio: 'loopback' } : {}))
@@ -102,10 +109,26 @@ async function stopListening(): Promise<void> {
 }
 
 export async function onAudioStatus(status: AudioStatus): Promise<void> {
+  const microphone = status.microphone === true
+  const systemAudio = status.systemAudio === true
+  if (status.state === 'changed') {
+    // Mid-session: a source died, switched device or arrived late.
+    const listening = getState().listening
+    if (!listening || stopping) return
+    const lost = (listening.microphone && !microphone) || (listening.systemAudio && !systemAudio)
+    if (status.message) toast(status.message, lost ? 'error' : 'info')
+    if (!microphone && !systemAudio && status.waiting !== true) {
+      void stopListening() // nothing left to hear: stop cleanly (notes are still written)
+      return
+    }
+    setState({ listening: { ...listening, microphone, systemAudio } })
+    return
+  }
   starting = false
   if (status.state === 'started') {
-    setState({ listening: { since: startedAt, microphone: status.microphone, systemAudio: status.systemAudio } })
-    if (status.message) toast(status.message, 'info')
+    setState({ listening: { since: startedAt, microphone, systemAudio } })
+    const missing = !microphone || (!systemAudio && status.waiting !== true)
+    if (status.message) toast(status.message, missing ? 'error' : 'info')
     return
   }
   if (status.state === 'error') {

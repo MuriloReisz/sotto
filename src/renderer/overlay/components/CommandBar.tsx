@@ -1,3 +1,4 @@
+import { describeSources } from '../../../shared/audio-health'
 import { formatAccelerator } from '../../../shared/hotkey-format'
 import type { HotkeyAction, OverlayState, Speaker, View } from '../../../shared/types'
 import { useElapsed } from '../hooks'
@@ -9,11 +10,13 @@ interface Props {
   state: OverlayState
   view: View | null
   levels: Record<Speaker, number>
+  /** Capture is waiting on a macOS permission prompt. */
+  notice: string | null
   onToggleView: (view: View) => void
   onOpenView: (view: View) => void
 }
 
-export function CommandBar({ state, view, levels, onToggleView, onOpenView }: Props): React.JSX.Element {
+export function CommandBar({ state, view, levels, notice, onToggleView, onOpenView }: Props): React.JSX.Element {
   const key = (action: HotkeyAction): string => formatAccelerator(state.hotkeys[action], state.platform)
   const listening = state.listening
   const elapsed = useElapsed(listening?.since ?? null)
@@ -37,11 +40,15 @@ export function CommandBar({ state, view, levels, onToggleView, onOpenView }: Pr
           type="button"
           className={`bar-btn listen ${listening ? 'is-live' : ''}`}
           onClick={() => window.sotto.toggleListening()}
-          title={`${listening ? 'Stop' : 'Start'} listening (${key('toggleListening')})`}
+          title={
+            listening
+              ? `${describeSources(listening.microphone, listening.systemAudio)} Stop listening (${key('toggleListening')})`
+              : (notice ?? `Start listening (${key('toggleListening')})`)
+          }
           aria-pressed={Boolean(listening)}
         >
           {listening ? <Meter levels={levels} /> : <Icon name="mic" />}
-          <span>{listening ? clock : 'Listen'}</span>
+          <span>{listening ? clock : notice ? 'Waiting…' : 'Listen'}</span>
           {!listening && <kbd>{key('toggleListening')}</kbd>}
         </button>
 

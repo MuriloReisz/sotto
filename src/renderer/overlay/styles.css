@@ -648,6 +648,10 @@ textarea::placeholder {
   color: var(--muted);
 }
 
+.transcript-status + .transcript-status {
+  padding-top: 0;
+}
+
 .live-dot {
   display: inline-block;
   width: 7px;

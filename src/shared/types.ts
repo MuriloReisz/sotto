@@ -144,9 +144,12 @@ export interface AudioChunk {
 export type AudioCommand = { type: 'start' } | { type: 'stop' }
 
 export interface AudioStatus {
-  state: 'started' | 'stopped' | 'error'
+  /** 'changed' = while listening, a source died, switched device or arrived late. */
+  state: 'started' | 'stopped' | 'error' | 'changed'
   microphone: boolean
   systemAudio: boolean
+  /** System audio is still waiting on a macOS permission prompt (it is attached when it arrives). */
+  waiting?: boolean
   message?: string
 }
 

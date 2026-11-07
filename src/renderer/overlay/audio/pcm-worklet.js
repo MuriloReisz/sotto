@@ -18,14 +18,15 @@ class PcmCapture extends AudioWorkletProcessor {
   }
 
   process(inputs) {
-    const channels = inputs[0]
-    if (!channels || channels.length === 0) return true
-    const frames = channels[0].length
+    // An input with no channels (a muted or silent track) still counts as silence, so the
+    // page keeps getting blocks and can tell "nothing arrives" from "the engine stopped".
+    const channels = inputs[0] || []
+    const frames = channels.length > 0 ? channels[0].length : 128 // 128 = one render quantum
     for (let i = 0; i < frames; i++) {
       // Mix down to mono.
       let v = 0
       for (let c = 0; c < channels.length; c++) v += channels[c][i]
-      this.sum += v / channels.length
+      this.sum += channels.length > 0 ? v / channels.length : 0
       this.count++
       // Average every `ratio` input samples into one output sample (a simple low-pass).
       this.phase += 1

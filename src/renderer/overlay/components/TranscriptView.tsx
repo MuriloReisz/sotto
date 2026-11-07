@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react'
+import { MIC_UNHEARD, SYSTEM_UNHEARD, describeSources } from '../../../shared/audio-health'
 import { formatAccelerator } from '../../../shared/hotkey-format'
 import type { OverlayState, TranscriptSegment } from '../../../shared/types'
 import { useTranscript } from '../hooks'
 
-export function TranscriptView({ state }: { state: OverlayState }): React.JSX.Element {
+/** `notice`: a permission prompt is probably open (from the audio capture). */
+export function TranscriptView({ state, notice }: { state: OverlayState; notice: string | null }): React.JSX.Element {
   const segments = useTranscript()
   const listRef = useRef<HTMLDivElement>(null)
   const listenKey = formatAccelerator(state.hotkeys.toggleListening, state.platform)
@@ -14,16 +16,28 @@ export function TranscriptView({ state }: { state: OverlayState }): React.JSX.El
     if (el) el.scrollTop = el.scrollHeight
   }, [segments])
 
-  const sources = state.listening
-    ? [state.listening.microphone && 'your microphone', state.listening.systemAudio && 'your computer’s audio'].filter(Boolean).join(' and ')
-    : ''
+  const listening = state.listening
+  const hearing = Boolean(listening && (listening.microphone || listening.systemAudio))
+  // What isn't working, in plain words. While a permission prompt is open the notice says
+  // that instead (system audio is attached once you answer it).
+  const problems = listening
+    ? [!listening.microphone && MIC_UNHEARD, !listening.systemAudio && !notice && SYSTEM_UNHEARD].filter(Boolean)
+    : []
 
   return (
     <div className="transcript">
       <p className="transcript-status">
-        {state.listening ? (
+        {notice && !listening ? (
+          <>{notice}</>
+        ) : listening ? (
           <>
-            <span className="live-dot" /> Listening to {sources}. Press <kbd>{suggestKey}</kbd> for a reply suggestion.
+            <span className="live-dot" /> {describeSources(listening.microphone, listening.systemAudio)}
+            {hearing && (
+              <>
+                {' '}
+                Press <kbd>{suggestKey}</kbd> for a reply suggestion.
+              </>
+            )}
           </>
         ) : segments.length > 0 ? (
           <>Last session. Press <kbd>{listenKey}</kbd> to start a new one.</>
@@ -31,9 +45,15 @@ export function TranscriptView({ state }: { state: OverlayState }): React.JSX.El
           <>Press <kbd>{listenKey}</kbd> to start listening. Speech is transcribed on this computer.</>
         )}
       </p>
+      {listening && notice && <p className="transcript-status">{notice}</p>}
+      {problems.map((text) => (
+        <p key={String(text)} className="transcript-status status-warn">
+          {text}
+        </p>
+      ))}
       <div className="transcript-list" ref={listRef}>
         {segments.length === 0 ? (
-          <p className="empty-line">{state.listening ? 'Waiting for someone to speak…' : 'Nothing transcribed yet.'}</p>
+          <p className="empty-line">{hearing ? 'Waiting for someone to speak…' : listening ? 'Not hearing any audio.' : 'Nothing transcribed yet.'}</p>
         ) : (
           merge(segments).map((line) => (
             <p key={line.id} className={`line line-${line.speaker}`}>

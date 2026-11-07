@@ -21,6 +21,8 @@ export function App(): React.JSX.Element | null {
   const [chosenView, setView] = useState<View | null | undefined>(undefined)
   const view: View | null = chosenView === undefined ? (state && !state.onboarded ? 'welcome' : null) : chosenView
   const [levels, setLevels] = useState<Record<Speaker, number>>({ me: 0, them: 0 })
+  /** Shown while capture waits on a macOS permission prompt. */
+  const [audioNotice, setAudioNotice] = useState<string | null>(null)
   const stackRef = useRef<HTMLDivElement>(null)
   const pendingFocus = useRef<HTMLElement | null>(null)
   const capture = useRef<AudioCapture | null>(null)
@@ -71,7 +73,12 @@ export function App(): React.JSX.Element | null {
     () =>
       window.sotto.onAudioCommand(async (command) => {
         if (command.type === 'start') {
-          capture.current ??= new AudioCapture({ onChunk: (c) => window.sotto.sendAudioChunk(c), onLevel: setLevels })
+          capture.current ??= new AudioCapture({
+            onChunk: (c) => window.sotto.sendAudioChunk(c),
+            onLevel: setLevels,
+            onSources: (update) => window.sotto.audioStatus({ state: 'changed', ...update }),
+            onNotice: setAudioNotice
+          })
           try {
             const result = await capture.current.start()
             window.sotto.audioStatus({ state: 'started', ...result })
@@ -100,13 +107,13 @@ export function App(): React.JSX.Element | null {
       onMouseDownCapture={onMouseDownCapture}
       style={{ '--glass-alpha': state.opacity } as React.CSSProperties}
     >
-      <CommandBar state={state} view={view} levels={levels} onToggleView={toggleView} onOpenView={setView} />
+      <CommandBar state={state} view={view} levels={levels} notice={audioNotice} onToggleView={toggleView} onOpenView={setView} />
 
       {view && (
         <section className="panel" aria-label="Sotto panel">
           {view !== 'welcome' && <PanelHeader view={view} onView={setView} onClose={() => setView(null)} />}
           {view === 'chat' && <ChatView state={state} />}
-          {view === 'transcript' && <TranscriptView state={state} />}
+          {view === 'transcript' && <TranscriptView state={state} notice={audioNotice} />}
           {view === 'notes' && <NotesView state={state} />}
           {view === 'settings' && settings && <SettingsPanel settings={settings} state={state} onHelp={() => setView('help')} />}
           {view === 'help' && <HelpView state={state} />}

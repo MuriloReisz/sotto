@@ -119,7 +119,7 @@ If one shows Sotto, share a single window instead of the whole screen.
 
 - **Screen Recording** (asking about your screen): macOS prompts on first use.
 - **Microphone** and **Screen & System Audio Recording** (listening): Sotto asks for the microphone first. Without it, only "Them" is transcribed; without system audio, only "Me".
-- **In development** (`npm run dev`), macOS attributes these permissions to the **terminal app** you launched Sotto from (Terminal, iTerm, VS Code…), so allow that app. The packaged app gets its own entries.
+- **In development** (`npm run dev`) on macOS, `scripts/electron-vite.mjs` starts Electron as its own "responsible process", so the prompts and System Settings entries say **Electron** (bundle id `com.github.Electron`, shared by every dev Electron app on this Mac), not your terminal. Without it macOS checks the terminal app, which has no system-audio usage key, so "Them" would get a dead stream. `SOTTO_DEV_DISCLAIM=0 npm run dev` turns this off (permissions then go to the terminal again). The packaged app gets its own entries.
 - **Accessibility is not needed.** Global hotkeys use the OS hotkey API.
 
 ## Architecture
