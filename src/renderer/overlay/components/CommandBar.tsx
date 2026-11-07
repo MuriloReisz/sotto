@@ -18,6 +18,8 @@ interface Props {
 
 export function CommandBar({ state, view, levels, notice, onToggleView, onOpenView }: Props): React.JSX.Element {
   const key = (action: HotkeyAction): string => formatAccelerator(state.hotkeys[action], state.platform)
+  /** "Label (⌘⇧S)", or just "Label" when the shortcut is not set. */
+  const hint = (label: string, action: HotkeyAction): string => (key(action) ? `${label} (${key(action)})` : label)
   const listening = state.listening
   const elapsed = useElapsed(listening?.since ?? null)
   const clock = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`
@@ -30,10 +32,10 @@ export function CommandBar({ state, view, levels, notice, onToggleView, onOpenVi
       </span>
 
       <nav className="bar-actions" aria-label="Actions">
-        <button type="button" className="bar-btn" onClick={() => window.sotto.askScreen()} title={`Ask about your screen (${key('screenshot')})`}>
+        <button type="button" className="bar-btn" onClick={() => window.sotto.askScreen()} title={hint('Ask about your screen', 'screenshot')}>
           <Icon name="screen" />
           <span>Ask screen</span>
-          <kbd>{key('screenshot')}</kbd>
+          {key('screenshot') && <kbd>{key('screenshot')}</kbd>}
         </button>
 
         <button
@@ -42,14 +44,14 @@ export function CommandBar({ state, view, levels, notice, onToggleView, onOpenVi
           onClick={() => window.sotto.toggleListening()}
           title={
             listening
-              ? `${describeSources(listening.microphone, listening.systemAudio)} Stop listening (${key('toggleListening')})`
-              : (notice ?? `Start listening (${key('toggleListening')})`)
+              ? `${describeSources(listening.microphone, listening.systemAudio)} ${hint('Stop listening', 'toggleListening')}`
+              : (notice ?? hint('Start listening', 'toggleListening'))
           }
           aria-pressed={Boolean(listening)}
         >
           {listening ? <Meter levels={levels} /> : <Icon name="mic" />}
           <span>{listening ? clock : notice ? 'Waiting…' : 'Listen'}</span>
-          {!listening && <kbd>{key('toggleListening')}</kbd>}
+          {!listening && key('toggleListening') && <kbd>{key('toggleListening')}</kbd>}
         </button>
 
         <button
@@ -59,7 +61,7 @@ export function CommandBar({ state, view, levels, notice, onToggleView, onOpenVi
             onOpenView('chat')
             window.sotto.setTyping(true)
           }}
-          title={`Type a question (${key('focusChat')})`}
+          title={hint('Type a question', 'focusChat')}
         >
           <Icon name="chat" />
           <span>Chat</span>
@@ -83,14 +85,21 @@ export function CommandBar({ state, view, levels, notice, onToggleView, onOpenVi
           </span>
         )}
         {state.clickThrough && (
-          <span className="tag tag-amber" title={`Clicks pass through. ${key('toggleClickThrough')} to interact again.`}>
+          <span
+            className="tag tag-amber"
+            title={
+              key('toggleClickThrough')
+                ? `Clicks pass through. ${key('toggleClickThrough')} to interact again.`
+                : `Clicks pass through. Turn it off from the Sotto icon in the ${state.platform === 'darwin' ? 'menu bar' : 'system tray'}.`
+            }
+          >
             Click-through
           </span>
         )}
         <button type="button" className="icon-btn" onClick={() => onToggleView('settings')} title="Settings" aria-label="Settings">
           <Icon name="gear" />
         </button>
-        <button type="button" className="icon-btn" onClick={() => window.sotto.hideOverlay()} title={`Hide (${key('toggleOverlay')})`} aria-label="Hide Sotto">
+        <button type="button" className="icon-btn" onClick={() => window.sotto.hideOverlay()} title={hint('Hide', 'toggleOverlay')} aria-label="Hide Sotto">
           <Icon name="close" />
         </button>
       </span>

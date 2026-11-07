@@ -24,8 +24,14 @@ export function ChatView({ state }: { state: OverlayState }): React.JSX.Element 
           <div className="empty">
             <p className="empty-title">Ask anything, or let Sotto look.</p>
             <p>
-              Press <kbd>{key('screenshot')}</kbd> to ask about your screen, or type below. While listening to a call, the
-              buttons underneath answer from the live conversation.
+              {key('screenshot') ? (
+                <>
+                  Press <kbd>{key('screenshot')}</kbd> to ask about your screen, or type below.
+                </>
+              ) : (
+                'Use Ask screen above to ask about your screen, or type below.'
+              )}{' '}
+              While listening to a call, the buttons underneath answer from the live conversation.
             </p>
           </div>
         ) : (

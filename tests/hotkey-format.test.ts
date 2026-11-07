@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_HOTKEYS } from '../src/shared/defaults'
-import { findDuplicateHotkeys, formatAccelerator, normalizeAccelerator } from '../src/shared/hotkey-format'
+import { findDuplicateHotkeys, formatAccelerator, formatMoveHotkeys, normalizeAccelerator } from '../src/shared/hotkey-format'
 
 describe('formatAccelerator', () => {
   it('uses symbols on macOS', () => {
@@ -35,5 +35,30 @@ describe('findDuplicateHotkeys', () => {
   it('ignores unbound (empty) actions', () => {
     const hotkeys = { ...DEFAULT_HOTKEYS, moveUp: '', moveDown: '' }
     expect(findDuplicateHotkeys(hotkeys)).toEqual([])
+  })
+})
+
+describe('unset hotkeys and platforms', () => {
+  it('formats an unset hotkey as empty', () => {
+    expect(formatAccelerator('', 'darwin')).toBe('')
+    expect(formatAccelerator('', 'win32')).toBe('')
+  })
+
+  it('formats the move keys as modifiers + arrows', () => {
+    expect(formatMoveHotkeys(DEFAULT_HOTKEYS, 'darwin')).toBe('⌃⌥ + arrows')
+    expect(formatMoveHotkeys(DEFAULT_HOTKEYS, 'win32')).toBe('Ctrl+Alt + arrows')
+    expect(formatMoveHotkeys({ ...DEFAULT_HOTKEYS, moveUp: '' }, 'darwin')).toBe('')
+  })
+
+  it('treats CommandOrControl as Ctrl off macOS and as ⌘ on macOS', () => {
+    expect(normalizeAccelerator('CommandOrControl+S', 'win32')).toBe(normalizeAccelerator('Control+S', 'win32'))
+    expect(normalizeAccelerator('CommandOrControl+S', 'darwin')).not.toBe(normalizeAccelerator('Control+S', 'darwin'))
+    expect(normalizeAccelerator('CommandOrControl+S', 'darwin')).toBe(normalizeAccelerator('Command+S', 'darwin'))
+  })
+
+  it('finds platform-specific duplicates', () => {
+    const hotkeys = { ...DEFAULT_HOTKEYS, screenshot: 'Control+Shift+Space' }
+    expect(findDuplicateHotkeys(hotkeys, 'win32')).toEqual([['toggleOverlay', 'screenshot']])
+    expect(findDuplicateHotkeys(hotkeys, 'darwin')).toEqual([])
   })
 })

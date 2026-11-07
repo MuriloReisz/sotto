@@ -69,6 +69,7 @@ export const DEFAULT_SETTINGS: Settings = {
   transcriptMinutes: 5,
   notesFolder: '',
   whisperModelPath: '',
+  removeEcho: true,
   overlayPosition: null,
   onboarded: false
 }

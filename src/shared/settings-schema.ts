@@ -37,6 +37,7 @@ export const settingsSchema = z.object({
   transcriptMinutes: z.number().int().min(1).max(60).catch(DEFAULT_SETTINGS.transcriptMinutes),
   notesFolder: z.string().catch(DEFAULT_SETTINGS.notesFolder),
   whisperModelPath: z.string().catch(DEFAULT_SETTINGS.whisperModelPath),
+  removeEcho: z.boolean().catch(DEFAULT_SETTINGS.removeEcho),
   overlayPosition: positionSchema.nullable().catch(null),
   onboarded: z.boolean().catch(false)
 })

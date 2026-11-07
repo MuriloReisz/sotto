@@ -55,11 +55,16 @@ export function useTranscript(): TranscriptSegment[] {
   const [segments, setSegments] = useState<TranscriptSegment[]>([])
   useEffect(() => {
     void window.sotto.getTranscript().then(setSegments)
-    const offSeg = window.sotto.onTranscriptSegment((s) => setSegments((list) => [...list, s].sort((a, b) => a.at - b.at)))
+    const offSeg = window.sotto.onTranscriptSegment((s) =>
+      setSegments((list) => [...list.filter((x) => x.id !== s.id), s].sort((a, b) => a.at - b.at))
+    )
     const offReset = window.sotto.onTranscriptReset(() => setSegments([]))
+    // An earlier "me" line was an echo of the other side (see shared/echo.ts).
+    const offRemove = window.sotto.onTranscriptRemove((id) => setSegments((list) => list.filter((x) => x.id !== id)))
     return () => {
       offSeg()
       offReset()
+      offRemove()
     }
   }, [])
   return segments

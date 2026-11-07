@@ -16,8 +16,17 @@ export type HotkeyAction =
   | 'moveLeft'
   | 'moveRight'
 
-/** Action -> Electron accelerator string, e.g. "CommandOrControl+Shift+Space". */
+/** Action -> Electron accelerator string, e.g. "CommandOrControl+Shift+Space". "" = not set. */
 export type Hotkeys = Record<HotkeyAction, string>
+
+/** What the hotkey editor edits: one row per action, except the four move keys share one row. */
+export type HotkeySlot = Exclude<HotkeyAction, 'moveUp' | 'moveDown' | 'moveLeft' | 'moveRight'> | 'move'
+
+/** Result of changing a hotkey. `error` is a sentence for the UI. */
+export interface HotkeyResult {
+  ok: boolean
+  error?: string
+}
 
 export interface Bounds {
   x: number
@@ -45,6 +54,8 @@ export interface Settings {
   notesFolder: string
   /** whisper.cpp model file. Empty = auto-detect. */
   whisperModelPath: string
+  /** Drop your mic's copy of the other side (speakers, no headphones). */
+  removeEcho: boolean
   /** Last overlay position (size is driven by its content). */
   overlayPosition: { x: number; y: number } | null
   /** Set after the welcome screen has been completed. */
@@ -131,6 +142,8 @@ export interface TranscriptSegment {
   text: string
   /** Epoch ms when the speech started. */
   at: number
+  /** Length of the audio chunk it came from, in ms (used to tell echoes from replies). */
+  durationMs: number
 }
 
 /** One chunk of speech captured in the renderer, sent to the main process for transcription. */
@@ -141,9 +154,12 @@ export interface AudioChunk {
   at: number
 }
 
-export type AudioCommand = { type: 'start' } | { type: 'stop' }
+/** `id` names the capture session (see shared/listen-session.ts). */
+export type AudioCommand = { type: 'start'; id: number } | { type: 'stop'; id: number }
 
 export interface AudioStatus {
+  /** The session this is about: the id of the start command it answers. */
+  id: number
   /** 'changed' = while listening, a source died, switched device or arrived late. */
   state: 'started' | 'stopped' | 'error' | 'changed'
   microphone: boolean

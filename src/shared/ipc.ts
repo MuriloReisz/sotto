@@ -3,6 +3,8 @@ import type {
   AudioCommand,
   AudioStatus,
   ChatItem,
+  HotkeyResult,
+  HotkeySlot,
   MeetingDetail,
   MeetingSummary,
   OverlayState,
@@ -27,6 +29,7 @@ export const IPC = {
   setHeight: 'overlay:set-height',
   setTyping: 'overlay:set-typing',
   copyText: 'overlay:copy-text',
+  uiReady: 'overlay:ui-ready',
   // chat
   getChat: 'chat:get',
   chatItem: 'chat:item',
@@ -45,6 +48,7 @@ export const IPC = {
   getTranscript: 'transcript:get',
   transcriptSegment: 'transcript:segment',
   transcriptReset: 'transcript:reset',
+  transcriptRemove: 'transcript:remove',
   // meeting notes
   listMeetings: 'notes:list',
   readMeeting: 'notes:read',
@@ -62,7 +66,12 @@ export const IPC = {
   removeContextFile: 'settings:remove-context-file',
   chooseNotesFolder: 'settings:choose-notes-folder',
   openNotesFolder: 'settings:open-notes-folder',
-  openPermissionSettings: 'settings:open-permissions'
+  openPermissionSettings: 'settings:open-permissions',
+  // hotkey editor
+  setHotkey: 'hotkeys:set',
+  resetHotkeys: 'hotkeys:reset',
+  recordHotkey: 'hotkeys:record',
+  hotkeyRecordEnded: 'hotkeys:record-ended'
 } as const
 
 type Unsubscribe = () => void
@@ -82,6 +91,8 @@ export interface SottoApi {
   /** Take or release keyboard focus (needed to type; released so the app behind gets focus back). */
   setTyping(typing: boolean): void
   copyText(text: string): void
+  /** The page is listening for pushes; main holds back hotkey commands until then. */
+  uiReady(): void
 
   // chat
   getChat(): Promise<ChatItem[]>
@@ -101,6 +112,8 @@ export interface SottoApi {
   getTranscript(): Promise<TranscriptSegment[]>
   onTranscriptSegment(listener: (segment: TranscriptSegment) => void): Unsubscribe
   onTranscriptReset(listener: () => void): Unsubscribe
+  /** A line already shown turned out to be an echo of the other side. */
+  onTranscriptRemove(listener: (id: string) => void): Unsubscribe
 
   // meeting notes
   listMeetings(): Promise<MeetingSummary[]>
@@ -122,4 +135,13 @@ export interface SottoApi {
   chooseNotesFolder(): Promise<void>
   openNotesFolder(): void
   openPermissionSettings(kind: 'screen' | 'microphone'): void
+
+  // hotkey editor
+  /** Change one shortcut ("" = not set). Checked and test-registered in the main process. */
+  setHotkey(slot: HotkeySlot, accelerator: string): Promise<HotkeyResult>
+  resetHotkeys(): Promise<HotkeyResult>
+  /** Start/stop recording a combo: Sotto's hotkeys are paused and the overlay takes focus meanwhile. */
+  recordHotkey(active: boolean): void
+  /** Main ended the recording on its own (timeout, focus lost): stop recording in the page too. */
+  onHotkeyRecordEnded(listener: () => void): Unsubscribe
 }

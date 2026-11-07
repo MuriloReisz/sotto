@@ -26,6 +26,8 @@ export function App(): React.JSX.Element | null {
   const stackRef = useRef<HTMLDivElement>(null)
   const pendingFocus = useRef<HTMLElement | null>(null)
   const capture = useRef<AudioCapture | null>(null)
+  /** The capture session main last started; every status we send names it. */
+  const sessionId = useRef(0)
 
   // The main process can ask for a view (hotkeys, errors).
   useEffect(() => window.sotto.onShowView((v) => setView(v)), [])
@@ -72,29 +74,37 @@ export function App(): React.JSX.Element | null {
   useEffect(
     () =>
       window.sotto.onAudioCommand(async (command) => {
+        const id = command.id
         if (command.type === 'start') {
+          sessionId.current = id
           capture.current ??= new AudioCapture({
             onChunk: (c) => window.sotto.sendAudioChunk(c),
             onLevel: setLevels,
-            onSources: (update) => window.sotto.audioStatus({ state: 'changed', ...update }),
+            onSources: (update) => window.sotto.audioStatus({ id: sessionId.current, state: 'changed', ...update }),
             onNotice: setAudioNotice
           })
           try {
             const result = await capture.current.start()
-            window.sotto.audioStatus({ state: 'started', ...result })
+            window.sotto.audioStatus({ id, state: 'started', ...result })
           } catch (error) {
             // 'cancelled' = you stopped listening while a permission prompt was open; already handled.
             if ((error as Error).message !== 'cancelled') {
-              window.sotto.audioStatus({ state: 'error', microphone: false, systemAudio: false, message: (error as Error).message })
+              window.sotto.audioStatus({ id, state: 'error', microphone: false, systemAudio: false, message: (error as Error).message })
             }
           }
         } else {
+          // A stop for an older session (main gave up on it) must not end the current one.
+          if (id !== sessionId.current) return
           await capture.current?.stop()
-          window.sotto.audioStatus({ state: 'stopped', microphone: false, systemAudio: false })
+          window.sotto.audioStatus({ id, state: 'stopped', microphone: false, systemAudio: false })
         }
       }),
     []
   )
+
+  // Last effect, so every listener above is attached: main can now send hotkey commands
+  // it held back while the page was loading (e.g. ⌘⇧A pressed right after launch).
+  useEffect(() => window.sotto.uiReady(), [])
 
   if (!state) return null
 

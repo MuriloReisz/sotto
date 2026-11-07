@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { MODELS } from '../../../shared/defaults'
 import { MAX_TEXT } from '../../../shared/settings-schema'
 import type { OverlayState, Settings, SettingsView } from '../../../shared/types'
+import { HotkeyEditor } from './HotkeyEditor'
 import { Icon } from './Icon'
 
 // Settings, grouped by what you're trying to do. Text fields save when you leave them.
@@ -69,6 +70,10 @@ export function SettingsPanel({ settings, state, onHelp }: { settings: SettingsV
           </select>
           of the conversation.
         </label>
+        <label className="inline-field">
+          <input type="checkbox" checked={settings.removeEcho} onChange={(e) => update({ removeEcho: e.target.checked })} />
+          Remove echo when you’re not wearing headphones
+        </label>
       </Section>
 
       <Section title="Meeting notes" hint="Saved as markdown files you own.">
@@ -99,6 +104,10 @@ export function SettingsPanel({ settings, state, onHelp }: { settings: SettingsV
         </label>
       </Section>
 
+      <Section title="Shortcuts" hint="They work in every app, even when Sotto is hidden.">
+        <HotkeyEditor state={state} />
+      </Section>
+
       <Section
         title="Permissions"
         hint={isMac ? 'macOS asks the first time. If you said no, turn Sotto on here.' : 'Windows asks the first time.'}
@@ -111,7 +120,7 @@ export function SettingsPanel({ settings, state, onHelp }: { settings: SettingsV
             Microphone
           </button>
           <button type="button" className="link-btn" onClick={onHelp}>
-            Shortcuts and help
+            Help
           </button>
         </div>
       </Section>

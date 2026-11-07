@@ -915,7 +915,8 @@ textarea::placeholder {
   color: var(--muted);
 }
 
-.inline-field input[type='range'] {
+.inline-field input[type='range'],
+.inline-field input[type='checkbox'] {
   accent-color: var(--them);
 }
 
@@ -931,6 +932,79 @@ textarea::placeholder {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+.btn-small {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+/* An unset shortcut leaves an empty keycap behind in some sentences: hide it. */
+kbd:empty {
+  display: none;
+}
+
+/* ---------- Shortcut editor ---------- */
+
+.hotkeys {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 6px;
+}
+
+.hotkey-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  column-gap: 12px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+}
+
+.hotkey-row.is-recording {
+  border-color: var(--line-strong);
+  background: var(--raised);
+}
+
+.hotkey-keys {
+  justify-self: end;
+}
+
+.hotkey-keys kbd {
+  font-size: 12.5px;
+  padding: 2px 7px;
+  color: var(--paper);
+}
+
+.hotkey-keys kbd.is-live {
+  border-color: var(--them);
+  color: var(--them);
+  animation: key-wait 1.4s ease-in-out infinite;
+}
+
+/* Waiting for keys: the keycap's edge breathes, the text stays readable. */
+@keyframes key-wait {
+  50% {
+    border-color: var(--line-strong);
+  }
+}
+
+.hotkey-unset {
+  color: var(--faint);
+  font-size: 13px;
+}
+
+.hotkey-note {
+  grid-column: 1 / -1;
+  margin: 4px 0 2px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.hotkey-note.is-error {
+  color: var(--warn);
 }
 
 /* ---------- Welcome + help ---------- */
@@ -1062,6 +1136,7 @@ textarea::placeholder {
 
 @media (prefers-reduced-motion: reduce) {
   .thinking::after,
+  .hotkey-keys kbd.is-live,
   .meter-bar {
     animation: none;
     transition: none;

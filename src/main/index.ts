@@ -1,15 +1,15 @@
 import { app } from 'electron'
 import { askAboutScreen, focusChat, runQuickAction } from './actions'
 import type { HotkeyHandlers } from './hotkeys'
-import { registerHotkeys, unregisterHotkeys } from './hotkeys'
+import { initHotkeys, unregisterHotkeys } from './hotkeys'
 import { registerIpcHandlers } from './ipc'
 import { fakeModel } from './llm/client'
 import { installAppMenu } from './menu'
 import { restrictPermissions } from './security'
 import { publishSettings } from './settings-view'
-import { getState, initState, onStateChanged, setState, setUiTarget, showView } from './state'
-import { hasApiKey } from './store/secrets'
-import { flushSettings, getSettings, onSettingsChanged } from './store/settings'
+import { getState, initState, onStateChanged, setUiTarget, showView } from './state'
+import { hasApiKey, loadApiKey } from './store/secrets'
+import { flushSettings, getSettings } from './store/settings'
 import { registerSystemAudioHandler, toggleListening } from './transcription/listening'
 import { stopWhisperServer } from './transcription/whisper-server'
 import { createTray, updateTray, type TrayActions } from './tray'
@@ -35,7 +35,8 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => showOverlay())
-  void app.whenReady().then(start)
+  // The key is decrypted first (async keychain access), so everything after can read it.
+  void app.whenReady().then(loadApiKey).then(start)
 }
 
 const hotkeyHandlers: HotkeyHandlers = {
@@ -95,21 +96,11 @@ function start(): void {
   setUiTarget(overlay.webContents)
   overlay.webContents.once('did-finish-load', () => publishSettings())
 
-  applyHotkeys()
-  onSettingsChanged((next) => {
-    // Re-register only when the bindings actually changed (position saves happen often).
-    if (JSON.stringify(next.hotkeys) !== JSON.stringify(getState().hotkeys)) applyHotkeys()
-  })
+  // Registers now and again whenever the hotkeys change in settings (the editor).
+  initHotkeys(hotkeyHandlers)
 
   createTray(trayActions, getState())
   onStateChanged((state) => updateTray(trayActions, state))
-}
-
-function applyHotkeys(): void {
-  const { hotkeys } = getSettings()
-  const hotkeyErrors = registerHotkeys(hotkeys, hotkeyHandlers)
-  setState({ hotkeys, hotkeyErrors })
-  for (const e of hotkeyErrors) console.warn(`[hotkeys] ${e.action} (${e.accelerator}): ${e.reason}`)
 }
 
 app.on('before-quit', () => {

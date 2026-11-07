@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron'
-import koffi from 'koffi'
+import { createRequire } from 'node:module'
 
 // macOS only: control which app is "active" around the overlay.
 //
@@ -16,8 +16,33 @@ import koffi from 'koffi'
 // Calls go through the Objective-C runtime with koffi (prebuilt FFI, no compiling).
 // Private methods are checked with respondsToSelector: first; if Apple removes one,
 // Sotto keeps working and just loses that refinement.
+//
+// koffi is loaded on first use, and only on macOS: a top-level import would crash the
+// whole main process at startup wherever its native part fails to load (e.g. Windows).
+// If it fails, every function below just does nothing.
 
 type Ptr = unknown
+type Koffi = typeof import('koffi')
+
+const isMac = process.platform === 'darwin'
+/** undefined = not tried yet, null = unavailable. */
+let koffiModule: Koffi | null | undefined
+
+function koffi(): Koffi {
+  if (koffiModule === undefined) {
+    koffiModule = null
+    if (isMac) {
+      try {
+        // createRequire: a plain runtime require the bundler leaves alone (koffi stays external).
+        koffiModule = createRequire(__filename)('koffi') as Koffi
+      } catch (error) {
+        console.warn('[sotto] koffi could not load; the overlay focus refinements are off:', error)
+      }
+    }
+  }
+  if (!koffiModule) throw new Error('koffi is not available')
+  return koffiModule
+}
 
 interface Runtime {
   cls: (name: string) => Ptr
@@ -34,7 +59,7 @@ let rt: Runtime | null = null
 
 function runtime(): Runtime {
   if (!rt) {
-    const lib = koffi.load('/usr/lib/libobjc.A.dylib')
+    const lib = koffi().load('/usr/lib/libobjc.A.dylib')
     // objc_msgSend has no fixed signature, so we declare one typed variant per call shape.
     rt = {
       cls: lib.func('objc_getClass', 'void *', ['str']),
@@ -50,8 +75,6 @@ function runtime(): Runtime {
   return rt
 }
 
-const isMac = process.platform === 'darwin'
-
 function can(target: Ptr, selector: string): boolean {
   const r = runtime()
   return target !== null && r.responds(target, r.sel('respondsToSelector:'), r.sel(selector))
@@ -60,7 +83,7 @@ function can(target: Ptr, selector: string): boolean {
 function nsWindow(win: BrowserWindow): Ptr {
   const r = runtime()
   // getNativeWindowHandle() is a buffer holding an NSView* pointer on macOS.
-  const view = koffi.decode(win.getNativeWindowHandle(), 'void *')
+  const view = koffi().decode(win.getNativeWindowHandle(), 'void *')
   return r.send(view, r.sel('window'))
 }
 

@@ -9,33 +9,44 @@ import { join } from 'node:path'
 
 const file = (): string => join(app.getPath('userData'), 'secrets.json')
 
+/** undefined until loadApiKey() has run (at startup, before anything asks for the key). */
 let cached: string | null | undefined
 
-export function getApiKey(): string | null {
-  if (cached !== undefined) return cached
+/** Read and decrypt the saved key once at startup. Never rejects. */
+export async function loadApiKey(): Promise<void> {
   cached = null
   try {
     const { anthropicApiKey } = JSON.parse(readFileSync(file(), 'utf8')) as { anthropicApiKey?: string }
-    if (anthropicApiKey && safeStorage.isEncryptionAvailable()) {
-      cached = safeStorage.decryptString(Buffer.from(anthropicApiKey, 'base64'))
-    }
+    if (!anthropicApiKey || !(await safeStorage.isAsyncEncryptionAvailable())) return
+    const { result, shouldReEncrypt } = await safeStorage.decryptStringAsync(Buffer.from(anthropicApiKey, 'base64'))
+    cached = result
+    // The OS rotated the encryption key: store the key again under the new one.
+    if (shouldReEncrypt) await writeKey(result).catch(() => undefined)
   } catch {
     // No key saved yet, or it can't be decrypted (e.g. copied from another machine).
   }
-  return cached
+}
+
+/** The key, from memory. Null when none is saved (or before loadApiKey has run). */
+export function getApiKey(): string | null {
+  return cached ?? null
 }
 
 export function hasApiKey(): boolean {
   return getApiKey() !== null
 }
 
-export function saveApiKey(key: string): void {
-  if (!safeStorage.isEncryptionAvailable()) {
+export async function saveApiKey(key: string): Promise<void> {
+  if (!(await safeStorage.isAsyncEncryptionAvailable())) {
     throw new Error('This computer has no secure storage available, so the key cannot be saved safely.')
   }
-  const encrypted = safeStorage.encryptString(key).toString('base64')
-  writeFileSync(file(), JSON.stringify({ anthropicApiKey: encrypted }), { mode: 0o600 })
+  await writeKey(key)
   cached = key
+}
+
+async function writeKey(key: string): Promise<void> {
+  const encrypted = (await safeStorage.encryptStringAsync(key)).toString('base64')
+  writeFileSync(file(), JSON.stringify({ anthropicApiKey: encrypted }), { mode: 0o600 })
 }
 
 export function deleteApiKey(): void {

@@ -32,7 +32,7 @@ export function TranscriptView({ state, notice }: { state: OverlayState; notice:
         ) : listening ? (
           <>
             <span className="live-dot" /> {describeSources(listening.microphone, listening.systemAudio)}
-            {hearing && (
+            {hearing && suggestKey && (
               <>
                 {' '}
                 Press <kbd>{suggestKey}</kbd> for a reply suggestion.
@@ -40,9 +40,12 @@ export function TranscriptView({ state, notice }: { state: OverlayState; notice:
             )}
           </>
         ) : segments.length > 0 ? (
-          <>Last session. Press <kbd>{listenKey}</kbd> to start a new one.</>
+          <>Last session. {listenKey ? <>Press <kbd>{listenKey}</kbd> to start a new one.</> : 'Press Listen to start a new one.'}</>
         ) : (
-          <>Press <kbd>{listenKey}</kbd> to start listening. Speech is transcribed on this computer.</>
+          <>
+            {listenKey ? <>Press <kbd>{listenKey}</kbd> to start listening.</> : 'Press Listen to start.'} Speech is
+            transcribed on this computer.
+          </>
         )}
       </p>
       {listening && notice && <p className="transcript-status">{notice}</p>}

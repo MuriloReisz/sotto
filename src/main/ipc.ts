@@ -1,15 +1,16 @@
 import { clipboard, dialog, ipcMain, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { mkdirSync } from 'node:fs'
 import { IPC } from '../shared/ipc'
-import type { AudioChunk, AudioStatus, QuickAction, Settings } from '../shared/types'
-import { askAboutScreen, openPermissionSettings, runQuickAction, sendMessage } from './actions'
-import { getChat, newChat, stop } from './chat/conversation'
+import type { AudioChunk, AudioStatus, HotkeyResult, QuickAction, Settings } from '../shared/types'
+import { askAboutScreen, openPermissionSettings, runQuickAction, sendMessage, startNewChat } from './actions'
+import { resetHotkeys, setHotkey, startHotkeyRecording, stopHotkeyRecording } from './hotkey-editor'
+import { getChat, stop } from './chat/conversation'
 import { CONTEXT_FILE_FILTERS, addContextFiles, removeContextFile } from './context/files'
 import { verifyApiKey } from './llm/client'
 import { askAboutMeetings, listMeetings, notesFolder, openMeeting, readMeeting } from './notes/meetings'
 import { isTrustedSender } from './security'
 import { publishSettings, settingsView } from './settings-view'
-import { getState, toast } from './state'
+import { getState, markUiReady, toast } from './state'
 import { deleteApiKey, saveApiKey } from './store/secrets'
 import { updateSettings } from './store/settings'
 import { onAudioStatus, toggleListening, writeNotesNow } from './transcription/listening'
@@ -54,6 +55,7 @@ export function registerIpcHandlers(): void {
     clipboard.writeText(String(text))
     toast('Copied', 'success')
   })
+  on(IPC.uiReady, () => markUiReady())
 
   // chat
   handle(IPC.getChat, () => getChat())
@@ -61,7 +63,7 @@ export function registerIpcHandlers(): void {
   on(IPC.askScreen, () => void askAboutScreen())
   on<[QuickAction]>(IPC.quickAction, (action) => runQuickAction(action))
   on(IPC.stop, () => stop())
-  on(IPC.newChat, () => newChat())
+  on(IPC.newChat, () => startNewChat())
 
   // audio + transcript
   on(IPC.toggleListening, () => void toggleListening())
@@ -91,7 +93,7 @@ export function registerIpcHandlers(): void {
   handle<[Partial<Settings>], ReturnType<typeof settingsView>>(IPC.updateSettings, (patch) => {
     // The page may only change these. Folders and file paths are set by the main
     // process's own dialogs, so a compromised page can't point Sotto at arbitrary files.
-    const allowed: (keyof Settings)[] = ['model', 'customInstructions', 'aboutMe', 'opacity', 'transcriptMinutes', 'onboarded']
+    const allowed: (keyof Settings)[] = ['model', 'customInstructions', 'aboutMe', 'opacity', 'transcriptMinutes', 'removeEcho', 'onboarded']
     const safe = Object.fromEntries(Object.entries(patch ?? {}).filter(([k]) => allowed.includes(k as keyof Settings)))
     updateSettings(safe)
     publishSettings()
@@ -102,7 +104,7 @@ export function registerIpcHandlers(): void {
     if (!/^sk-ant-/.test(trimmed)) return 'That doesn’t look like an Anthropic API key (they start with sk-ant-).'
     const problem = await verifyApiKey(trimmed)
     if (problem) return problem
-    saveApiKey(trimmed)
+    await saveApiKey(trimmed)
     publishSettings()
     return null
   })
@@ -136,4 +138,10 @@ export function registerIpcHandlers(): void {
     void shell.openPath(notesFolder())
   })
   on<['screen' | 'microphone']>(IPC.openPermissionSettings, (kind) => openPermissionSettings(kind))
+
+  // hotkey editor: hotkeys are never changed through updateSettings; setHotkey validates
+  // the slot and accelerator (allowlist + length limit) and test-registers it first.
+  handle<[unknown, unknown], HotkeyResult>(IPC.setHotkey, (slot, accelerator) => setHotkey(slot, accelerator))
+  handle(IPC.resetHotkeys, () => resetHotkeys())
+  on<[unknown]>(IPC.recordHotkey, (active) => (active === true ? startHotkeyRecording() : stopHotkeyRecording(true)))
 }

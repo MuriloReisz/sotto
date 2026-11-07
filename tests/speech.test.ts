@@ -72,9 +72,9 @@ describe('transcript helpers', () => {
   it('formats and merges consecutive lines per speaker', () => {
     const t0 = 1_000_000
     const segs = [
-      { id: '1', speaker: 'them' as const, text: 'What is the price?', at: t0 },
-      { id: '2', speaker: 'them' as const, text: 'Per seat?', at: t0 + 2000 },
-      { id: '3', speaker: 'me' as const, text: 'Yes, 20 euro.', at: t0 + 65_000 }
+      { id: '1', speaker: 'them' as const, text: 'What is the price?', at: t0, durationMs: 1500 },
+      { id: '2', speaker: 'them' as const, text: 'Per seat?', at: t0 + 2000, durationMs: 1000 },
+      { id: '3', speaker: 'me' as const, text: 'Yes, 20 euro.', at: t0 + 65_000, durationMs: 1500 }
     ]
     expect(formatTranscript(segs)).toBe('[0:00] Them: What is the price? Per seat?\n[1:05] Me: Yes, 20 euro.')
     expect(formatTranscript(segs, { sinceMs: 10_000, now: t0 + 70_000 })).toBe('[1:05] Me: Yes, 20 euro.')

@@ -16,6 +16,12 @@ describe('parseSettings', () => {
     expect(parsed.transcriptMinutes).toBe(10)
   })
 
+  it('removes echo by default and keeps an explicit off', () => {
+    expect(parseSettings({}).removeEcho).toBe(true)
+    expect(parseSettings({ removeEcho: false }).removeEcho).toBe(false)
+    expect(parseSettings({ removeEcho: 'no' }).removeEcho).toBe(true)
+  })
+
   it('rejects an unknown model id', () => {
     expect(parseSettings({ model: 'gpt-9' }).model).toBe('claude-sonnet-5-5')
   })

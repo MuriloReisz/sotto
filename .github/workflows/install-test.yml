@@ -1,0 +1,127 @@
+# Runs the two install commands from the README on clean GitHub runners and checks the
+# result, so a broken installer or release is caught before users hit it.
+#
+#   macOS:   when a release is published (the mac files and SHA256SUMS are there from the
+#            start), or by hand.
+#   Windows: when the release workflow has uploaded the .exe for a tag, or by hand.
+#
+# It only reads: no secrets, read-only token, and no code from this repository runs except
+# the installers themselves, fetched exactly as users fetch them (raw.githubusercontent.com,
+# main branch).
+
+name: install-test
+
+on:
+  release:
+    types: [published]
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag to install (e.g. v0.1.0). Empty = the latest release, as users get it.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  SOTTO_MODEL: base.en
+  # Empty = latest. A prerelease is never "latest", so it is installed by its tag.
+  SOTTO_VERSION: ${{ inputs.version || (github.event.release.prerelease && github.event.release.tag_name) || '' }}
+  BASE_EN_SHA256: a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002
+
+jobs:
+  macos:
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest   # Apple Silicon
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Run the install command from the README
+        run: curl -fsSL https://raw.githubusercontent.com/MuriloReisz/sotto/main/install.sh | bash
+
+      - name: Check the app, its signature, whisper.cpp and the model
+        run: |
+          set -euo pipefail
+          app=/Applications/Sotto.app
+          test -d "$app" || { echo "::error::$app is missing"; exit 1; }
+          codesign --verify --deep --strict \
+            -R='identifier "com.muriloreis.sotto" and certificate leaf = H"19c4a1feecc3210951b0686bab1bb84236b27b46"' "$app"
+          echo "Signature OK: $(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist")"
+          server="$(command -v whisper-server || echo /opt/homebrew/bin/whisper-server)"
+          test -x "$server" || { echo "::error::whisper-server is not installed"; exit 1; }
+          "$server" --help > /dev/null 2>&1 || { echo "::error::whisper-server --help failed"; exit 1; }
+          model="$HOME/Library/Application Support/Sotto/models/ggml-base.en.bin"
+          test -f "$model" || { echo "::error::$model is missing"; exit 1; }
+          echo "$BASE_EN_SHA256  $model" | shasum -a 256 -c -
+
+      - name: Check Sotto started, then quit it
+        if: always()
+        run: |
+          sleep 3
+          if pgrep -x Sotto > /dev/null; then
+            echo "Sotto is running."
+            osascript -e 'tell application id "com.muriloreis.sotto" to quit' || true
+            sleep 5
+            pkill -x Sotto || true
+          else
+            echo "::warning::Sotto was not running after the install."
+          fi
+
+  windows:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        # Windows PowerShell 5.1, which is what most people paste the command into.
+        shell: powershell
+    steps:
+      - name: Run the install command from the README
+        run: |
+          irm https://raw.githubusercontent.com/MuriloReisz/sotto/main/install.ps1 | iex
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 failed (exit code $LASTEXITCODE)" }
+
+      - name: Check the app, whisper.cpp and the model
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\sotto\Sotto.exe'
+          if (-not (Test-Path -LiteralPath $exe)) { throw "Sotto.exe is missing ($exe)" }
+          Write-Host "Sotto.exe OK: $((Get-Item -LiteralPath $exe).VersionInfo.ProductVersion)"
+
+          $whisperDir = Join-Path $env:APPDATA 'Sotto\whisper'
+          Get-ChildItem -LiteralPath $whisperDir | Format-Table Name, Length -AutoSize | Out-String | Write-Host
+          $server = Join-Path $whisperDir 'whisper-server.exe'
+          # Exit code 0 proves the Visual C++ runtime and every DLL it imports are present.
+          $p = Start-Process -FilePath $server -ArgumentList '--help' -NoNewWindow -PassThru -Wait `
+            -RedirectStandardOutput help.out -RedirectStandardError help.err
+          if ($p.ExitCode -ne 0) {
+            Get-Content help.out, help.err -ErrorAction SilentlyContinue | Write-Host
+            throw "whisper-server.exe --help exited with $($p.ExitCode)"
+          }
+          Write-Host 'whisper-server.exe --help OK'
+
+          $model = Join-Path $env:APPDATA 'Sotto\models\ggml-base.en.bin'
+          if (-not (Test-Path -LiteralPath $model)) { throw "$model is missing" }
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $model).Hash.ToLowerInvariant()
+          if ($hash -ne $env:BASE_EN_SHA256) { throw "Model SHA-256 is $hash, expected $env:BASE_EN_SHA256" }
+          Write-Host 'Model OK'
+
+      - name: Check Sotto started, then quit it
+        if: always()
+        run: |
+          $sotto = Get-Process -Name 'Sotto' -ErrorAction SilentlyContinue
+          if ($sotto) {
+            Write-Host 'Sotto is running.'
+            $sotto | Stop-Process -Force
+          } else {
+            Write-Host '::warning::Sotto was not running after the install.'
+          }

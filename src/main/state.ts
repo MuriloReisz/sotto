@@ -9,6 +9,11 @@ let state: OverlayState
 let target: WebContents | null = null
 let listeners: Array<(state: OverlayState) => void> = []
 let toastId = 0
+/** The page has attached its listeners (it says so once React has mounted). */
+let uiReady = false
+/** Messages that matter, held back while the page loads (a hotkey right after launch). */
+let pending: Array<[string, unknown]> = []
+const HELD_BACK = new Set<string>([IPC.audioCommand, IPC.showView, IPC.toast])
 
 export function initState(initial: OverlayState): void {
   state = initial
@@ -21,11 +26,30 @@ export function getState(): OverlayState {
 /** The web page that receives pushes (the overlay window's contents). */
 export function setUiTarget(webContents: WebContents): void {
   target = webContents
+  uiReady = false
+  // A reload (development) starts a fresh page that has to attach its listeners again.
+  webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) uiReady = false
+  })
 }
 
-/** Push any message to the overlay UI (no-op before the window exists). */
+/** The page is listening: deliver what was held back, in order. */
+export function markUiReady(): void {
+  uiReady = true
+  const held = pending
+  pending = []
+  held.forEach(([channel, payload]) => sendToUi(channel, payload))
+}
+
+/**
+ * Push a message to the overlay UI (no-op before the window exists). Until the page is
+ * ready, commands, views and toasts wait; anything else is sent straight away (if the
+ * page isn't listening yet, it fetches that data when it mounts).
+ */
 export function sendToUi(channel: string, payload?: unknown): void {
-  if (target && !target.isDestroyed()) target.send(channel, payload)
+  if (!target || target.isDestroyed()) return
+  if (uiReady || !HELD_BACK.has(channel)) target.send(channel, payload)
+  else if (pending.length < 50) pending.push([channel, payload])
 }
 
 export function setState(patch: Partial<OverlayState>): void {

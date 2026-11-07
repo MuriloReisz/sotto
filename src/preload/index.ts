@@ -24,6 +24,7 @@ const api: SottoApi = {
   setHeight: (h) => send(IPC.setHeight, h),
   setTyping: (t) => send(IPC.setTyping, t),
   copyText: (t) => send(IPC.copyText, t),
+  uiReady: () => send(IPC.uiReady),
   // chat
   getChat: () => invoke(IPC.getChat),
   onChatItem: (l) => subscribe(IPC.chatItem, l),
@@ -41,6 +42,7 @@ const api: SottoApi = {
   getTranscript: () => invoke(IPC.getTranscript),
   onTranscriptSegment: (l) => subscribe(IPC.transcriptSegment, l),
   onTranscriptReset: (l) => subscribe(IPC.transcriptReset, l),
+  onTranscriptRemove: (l) => subscribe(IPC.transcriptRemove, l),
   // meeting notes
   listMeetings: () => invoke(IPC.listMeetings),
   readMeeting: (id) => invoke(IPC.readMeeting, id),
@@ -58,7 +60,12 @@ const api: SottoApi = {
   removeContextFile: (name) => invoke(IPC.removeContextFile, name),
   chooseNotesFolder: () => invoke(IPC.chooseNotesFolder),
   openNotesFolder: () => send(IPC.openNotesFolder),
-  openPermissionSettings: (kind) => send(IPC.openPermissionSettings, kind)
+  openPermissionSettings: (kind) => send(IPC.openPermissionSettings, kind),
+  // hotkey editor
+  setHotkey: (slot, accelerator) => invoke(IPC.setHotkey, slot, accelerator),
+  resetHotkeys: () => invoke(IPC.resetHotkeys),
+  recordHotkey: (active) => send(IPC.recordHotkey, active),
+  onHotkeyRecordEnded: (l) => subscribe(IPC.hotkeyRecordEnded, l)
 }
 
 contextBridge.exposeInMainWorld('sotto', api)

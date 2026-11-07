@@ -101,7 +101,8 @@ export function createOverlayWindow(): BrowserWindow {
   })
   win.on('moved', savePosition)
 
-  const devUrl = process.env['ELECTRON_RENDERER_URL']
+  // Packaged builds never load a dev server, even if the env var is set.
+  const devUrl = app.isPackaged ? undefined : process.env['ELECTRON_RENDERER_URL']
   if (devUrl) void win.loadURL(`${devUrl}/overlay/index.html`)
   else void win.loadFile(join(__dirname, '../renderer/overlay/index.html'))
 

@@ -1,5 +1,5 @@
 import { HOTKEY_LABELS } from '../../../shared/defaults'
-import { formatAccelerator } from '../../../shared/hotkey-format'
+import { formatAccelerator, formatMoveHotkeys } from '../../../shared/hotkey-format'
 import type { HotkeyAction, OverlayState, SettingsView } from '../../../shared/types'
 import { ApiKeyField } from './SettingsPanel'
 
@@ -8,21 +8,18 @@ import { ApiKeyField } from './SettingsPanel'
 const MAIN_KEYS: HotkeyAction[] = ['toggleOverlay', 'screenshot', 'toggleListening', 'suggestReply', 'focusChat', 'toggleClickThrough']
 
 function ShortcutList({ state, actions }: { state: OverlayState; actions: HotkeyAction[] }): React.JSX.Element {
+  const keycap = (text: string): React.JSX.Element => (text ? <kbd>{text}</kbd> : <span className="hotkey-unset">Not set</span>)
   return (
     <dl className="shortcuts">
       {actions.map((a) => (
         <div key={a} className="shortcut">
           <dt>{HOTKEY_LABELS[a]}</dt>
-          <dd>
-            <kbd>{formatAccelerator(state.hotkeys[a], state.platform)}</kbd>
-          </dd>
+          <dd>{keycap(formatAccelerator(state.hotkeys[a], state.platform))}</dd>
         </div>
       ))}
       <div className="shortcut">
         <dt>Move Sotto</dt>
-        <dd>
-          <kbd>{formatAccelerator(state.hotkeys.moveUp, state.platform).replace('↑', '')} + arrows</kbd>
-        </dd>
+        <dd>{keycap(formatMoveHotkeys(state.hotkeys, state.platform))}</dd>
       </div>
     </dl>
   )
@@ -81,6 +78,7 @@ export function HelpView({ state }: { state: OverlayState }): React.JSX.Element 
 
       <h3>How it works</h3>
       <ul className="plain-list">
+        <li>Change any shortcut in Settings → Shortcuts.</li>
         <li>Clicking Sotto doesn’t take focus from the app you’re in. Click a text box when you want to type; Esc gives focus back.</li>
         <li>Listening transcribes your mic as “Me” and your computer’s audio as “Them”, on this computer.</li>
         <li>When you stop listening, Sotto writes meeting notes and a follow-up email into the Notes tab.</li>

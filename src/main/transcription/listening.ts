@@ -1,10 +1,12 @@
 import { desktopCapturer, session, systemPreferences } from 'electron'
 import { MIN_WORDS_FOR_NOTES } from '../../shared/defaults'
+import { formatAccelerator } from '../../shared/hotkey-format'
 import { IPC } from '../../shared/ipc'
+import { routeAudioStatus } from '../../shared/listen-session'
 import { wordCount } from '../../shared/transcript'
 import type { AudioStatus } from '../../shared/types'
 import { writeMeetingNotes } from '../notes/meetings'
-import { isTrustedUrl } from '../security'
+import { isOverlayPage } from '../security'
 import { getState, sendToUi, setState, showView, toast } from '../state'
 import { showOverlay } from '../windows/overlay'
 import { drained, getTranscript, resetTranscript } from './session'
@@ -15,8 +17,20 @@ import { ensureWhisperServer, transcriptionStatus } from './whisper-server'
 
 let startedAt = 0
 let stopping = false
+/** The capture session being started or run (0 = none). Sent with every command; the
+ *  page's statuses carry it back, so answers to a cancelled start can be told apart. */
+let sessionId = 0
+let lastSessionId = 0
 /** True from the toggle until capture reports back (permission prompts can take a while). */
 let starting = false
+/** The page has had the start command this long without answering: probably a prompt. */
+const START_PATIENCE_MS = 15_000
+/** Set once START_PATIENCE_MS has passed; the next press then cancels the start. */
+let stalled = false
+let patienceTimer: NodeJS.Timeout | undefined
+/** The page normally confirms a stop within a second; no answer means it crashed or hung. */
+const STOP_PATIENCE_MS = 10_000
+let stopTimer: NodeJS.Timeout | undefined
 
 /**
  * System audio comes from `getDisplayMedia` in the page. This handler answers it
@@ -25,7 +39,7 @@ let starting = false
  */
 export function registerSystemAudioHandler(): void {
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    if (!isTrustedUrl(request.frame?.url ?? '')) {
+    if (!isOverlayPage(request.frame?.url ?? '')) {
       callback({})
       return
     }
@@ -45,15 +59,54 @@ export function registerSystemAudioHandler(): void {
 
 export async function toggleListening(): Promise<void> {
   if (getState().listening) await stopListening()
+  else if (starting && stalled) cancelStart()
   else if (starting) toast('Still starting: answer the macOS permission prompt if one is open.')
   else {
     starting = true
-    const handedOff = await startListening().catch(() => false)
-    // Handed off: the page reports 'started' or 'error' (onAudioStatus clears the flag);
-    // the timer is only a safety net. Not handed off: allow a retry straight away.
-    if (handedOff) setTimeout(() => (starting = false), 15_000)
-    else starting = false
+    const handedOff = await startListening().catch((error: unknown) => {
+      console.error('[listening] start failed:', error)
+      toast(`Could not start listening: ${error instanceof Error ? error.message : String(error)}`, 'error')
+      return false
+    })
+    // Handed off: the page reports 'started', 'error' or 'stopped' (onAudioStatus clears
+    // the flag). Not handed off: allow a retry straight away.
+    if (handedOff) patienceTimer = setTimeout(onStartStalled, START_PATIENCE_MS)
+    else startSettled()
   }
+}
+
+/** The start/stop listening shortcut for messages, e.g. " (⌘⇧A)", or "" when unset. */
+function listenKey(): string {
+  const { hotkeys, platform } = getState()
+  const key = formatAccelerator(hotkeys.toggleListening, platform)
+  return key ? ` (${key})` : ''
+}
+
+/**
+ * Still no answer from the page: usually a macOS permission prompt is open (with no
+ * microphone, capture waits for the system-audio prompt). Don't give up on it, since
+ * you may still click Allow, but say what's happening and let the next press cancel.
+ */
+function onStartStalled(): void {
+  if (!starting) return
+  stalled = true
+  toast(`Still waiting on a permission prompt. Answer it, or press Listen${listenKey()} again to cancel.`, 'error')
+}
+
+/** Give up on a stalled start. The page stops capture; whatever it answers for this
+ *  session from now on is stale (a late 'started' gets another stop). */
+function cancelStart(): void {
+  const id = sessionId
+  sessionId = 0
+  startSettled()
+  sendToUi(IPC.audioCommand, { type: 'stop', id })
+  toast(`Stopped waiting. Press Listen${listenKey()} to try again.`)
+}
+
+function startSettled(): void {
+  starting = false
+  stalled = false
+  clearTimeout(patienceTimer)
 }
 
 /** Returns true once the page has been told to start capturing. */
@@ -79,7 +132,8 @@ async function startListening(): Promise<boolean> {
   }
   resetTranscript()
   startedAt = Date.now()
-  sendToUi(IPC.audioCommand, { type: 'start' })
+  sessionId = ++lastSessionId
+  sendToUi(IPC.audioCommand, { type: 'start', id: sessionId })
   // `listening` is set when the page confirms capture started (onAudioStatus).
   return true
 }
@@ -104,11 +158,22 @@ async function askForMicrophone(): Promise<void> {
 async function stopListening(): Promise<void> {
   if (stopping) return
   stopping = true
-  sendToUi(IPC.audioCommand, { type: 'stop' })
+  sendToUi(IPC.audioCommand, { type: 'stop', id: sessionId })
   // The page answers with status 'stopped' after sending its last chunk.
+  stopTimer = setTimeout(onStopUnanswered, STOP_PATIENCE_MS)
+}
+
+/** The page never confirmed the stop (it crashed or hung): end the session from here. */
+function onStopUnanswered(): void {
+  if (!stopping) return
+  toast('Audio capture stopped responding, so listening has ended.', 'error')
+  void finishSession() // a 'stopped' arriving later is stale and ignored
 }
 
 export async function onAudioStatus(status: AudioStatus): Promise<void> {
+  const route = routeAudioStatus(status, sessionId)
+  if (route === 'stop') sendToUi(IPC.audioCommand, { type: 'stop', id: status.id })
+  if (route !== 'handle') return
   const microphone = status.microphone === true
   const systemAudio = status.systemAudio === true
   if (status.state === 'changed') {
@@ -124,7 +189,7 @@ export async function onAudioStatus(status: AudioStatus): Promise<void> {
     setState({ listening: { ...listening, microphone, systemAudio } })
     return
   }
-  starting = false
+  startSettled()
   if (status.state === 'started') {
     setState({ listening: { since: startedAt, microphone, systemAudio } })
     const missing = !microphone || (!systemAudio && status.waiting !== true)
@@ -132,12 +197,20 @@ export async function onAudioStatus(status: AudioStatus): Promise<void> {
     return
   }
   if (status.state === 'error') {
+    sessionId = 0
     stopping = false
+    clearTimeout(stopTimer)
     setState({ listening: null })
     toast(status.message ?? 'Could not start listening.', 'error')
     return
   }
-  // stopped: finish transcribing what's queued, then write the notes.
+  await finishSession()
+}
+
+/** Stopped: finish transcribing what's queued, then write the notes. */
+async function finishSession(): Promise<void> {
+  sessionId = 0
+  clearTimeout(stopTimer)
   const endedAt = Date.now()
   setState({ listening: null })
   await drained()
@@ -146,7 +219,7 @@ export async function onAudioStatus(status: AudioStatus): Promise<void> {
   if (wordCount(segments) >= MIN_WORDS_FOR_NOTES) {
     void writeMeetingNotes(segments, startedAt, endedAt)
   } else if (segments.length > 0) {
-    toast('Too short for meeting notes. Use "Write notes" in the Notes tab if you still want them.')
+    toast('Too short for meeting notes. Use "Write meeting notes" in the Transcript tab if you still want them.')
   }
 }
 

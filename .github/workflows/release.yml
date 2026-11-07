@@ -1,0 +1,170 @@
+# Builds the Windows installer (Sotto-win-x64.exe, NSIS) and adds it to the GitHub release
+# for the tag, together with its line in the release's SHA256SUMS. macOS builds are made and
+# uploaded by hand (they are signed with a certificate that only lives in Murilo's keychain),
+# so there is no mac job here.
+#
+# Release order (README > Releasing):
+#   1. bump "version" in package.json, commit, push
+#   2. locally: SOTTO_SIGN_IDENTITY="Sotto Self-Signed" npm run dist:mac, npm run release:sums,
+#      then gh release create v<version> release/<version>/Sotto-mac-*.zip ... SHA256SUMS
+#      (this creates the tag too, which starts this workflow)
+#   3. this workflow uploads the .exe and the updated SHA256SUMS to that release.
+#   4. .github/workflows/install-test.yml then runs both install commands.
+# This workflow never creates a release: if the release doesn't exist (or has no
+# SHA256SUMS), the upload job fails and says so. The .exe stays a workflow artifact; create
+# the release, then re-run the failed job.
+#
+# Security: the build job runs npm ci (third-party install scripts) with a read-only token
+# that isn't stored in the checkout. Only the upload job, which runs no repository code and
+# no npm, can write to releases. Actions are pinned to commit SHAs.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build and upload to (e.g. v0.1.0). Empty = build only, keep the .exe as a workflow artifact.'
+        required: false
+        default: ''
+
+permissions: {}
+
+env:
+  # Untrusted text (the dispatch input) only ever reaches the shell through this variable.
+  TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+
+concurrency:
+  # One run per tag at a time, so two uploads can't race on SHA256SUMS.
+  group: release-${{ github.event_name == 'push' && github.ref_name || inputs.tag || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check the tag format
+        if: env.TAG != ''
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$TAG' is not a release tag like v0.1.0"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG != '' && format('refs/tags/{0}', env.TAG) || github.ref }}
+          persist-credentials: false
+
+      # No npm cache: a release build shouldn't restore files another workflow saved.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Check the tag matches package.json
+        if: env.TAG != ''
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match package.json version $version"
+            exit 1
+          fi
+
+      # npm 11 may skip dependency install scripts; the root "postinstall" downloads the
+      # Electron binary itself (node accepts forward slashes on Windows). electron-builder
+      # downloads its own Electron for packaging, and koffi's Windows binary comes
+      # prebuilt in @koromix/koffi-win32-x64 (an optional dependency npm installs here).
+      - run: npm ci
+
+      - name: Build the installer
+        run: npm run dist:win
+
+      # File names carry no version (electron-builder.config.mjs); the folder does.
+      - name: Find the installer
+        id: exe
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          file="release/$version/Sotto-win-x64.exe"
+          test -f "$file" || { echo "::error::$file was not built"; ls -R release; exit 1; }
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sotto-win-x64
+          path: ${{ steps.exe.outputs.file }}
+          if-no-files-found: error
+
+  upload:
+    needs: build
+    if: github.event_name == 'push' || inputs.tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ASSET: Sotto-win-x64.exe
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sotto-win-x64
+          path: artifact
+
+      - name: Check the release exists and is complete
+        run: |
+          set -euo pipefail
+          test -f "artifact/$ASSET" || { echo "::error::artifact/$ASSET is missing"; ls -R artifact; exit 1; }
+          # The mac release is created by hand from the same tag; give it a few minutes.
+          for i in $(seq 1 10); do
+            gh release view "$TAG" > /dev/null 2>&1 && break
+            echo "Release $TAG does not exist yet; waiting ($i/10)..."
+            sleep 30
+          done
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::error::Release $TAG does not exist. Create it with the mac files and SHA256SUMS (README > Releasing), then re-run this job. This workflow never creates releases."
+            exit 1
+          fi
+          assets="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+          for need in SHA256SUMS Sotto-mac-arm64.zip Sotto-mac-x64.zip; do
+            if ! grep -qx "$need" <<<"$assets"; then
+              echo "::error::Release $TAG has no $need. Upload the mac files and SHA256SUMS first (README > Releasing), then re-run this job."
+              exit 1
+            fi
+          done
+
+      - name: Add the installer and its checksum to the release
+        run: |
+          set -euo pipefail
+          mkdir -p sums
+          gh release download "$TAG" --pattern SHA256SUMS --dir sums --clobber
+          hash="$(sha256sum "artifact/$ASSET" | cut -d' ' -f1)"
+          # Keep every other line, replace (or add) the .exe line, and check the result is
+          # well-formed before anything is uploaded.
+          { grep -v "  $ASSET\$" sums/SHA256SUMS || true; echo "$hash  $ASSET"; } | sort -k2 > SHA256SUMS
+          bad="$(grep -vE '^[0-9a-f]{64}  [A-Za-z0-9._-]+$' SHA256SUMS || true)"
+          if [ -n "$bad" ]; then
+            echo "::error::SHA256SUMS would have malformed lines, so nothing was uploaded:"; echo "$bad"; exit 1
+          fi
+          test "$(grep -c "  $ASSET\$" SHA256SUMS)" = 1
+          echo "New SHA256SUMS:"; cat SHA256SUMS
+          # The .exe first: until SHA256SUMS lists it, installers refuse it instead of
+          # running an unlisted file.
+          gh release upload "$TAG" "artifact/$ASSET" --clobber
+          gh release upload "$TAG" SHA256SUMS --clobber
+
+      - name: Check what the release now serves
+        run: |
+          set -euo pipefail
+          mkdir -p check
+          gh release download "$TAG" --pattern SHA256SUMS --pattern "$ASSET" --dir check --clobber
+          cd check
+          grep "  $ASSET\$" SHA256SUMS | sha256sum -c -
